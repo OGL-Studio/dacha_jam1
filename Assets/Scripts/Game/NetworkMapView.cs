@@ -33,8 +33,15 @@ namespace NightShift.Game
         private const int GridSortingOrder = 0;
         private const int LinkSortingOrder = 10;
         private const int NodeSortingOrder = 20;
+        private const int NodeLabelSortingOrder = 25;
         private const int PacketSortingOrder = 30;
         private const int FlashSortingOrder = 40;
+
+        /// <summary>
+        /// Shared across every label, resolved once. Static because a font is an engine-owned asset,
+        /// not per-view state, and building one per node would waste a font atlas each time.
+        /// </summary>
+        private static Font _nodeLabelFont;
 
         private NetworkSimulation _simulation;
         private ViewConfig _config;
@@ -140,7 +147,84 @@ namespace NightShift.Game
                 renderer.sortingOrder = NodeSortingOrder;
 
                 _topologyVisuals.Add(go);
+                _topologyVisuals.Add(CreateNodeLabel(node, position));
             }
+        }
+
+        /// <summary>
+        /// Draws a node's terminal name (<c>gw</c>, <c>srv-1</c>, <c>fw-2</c>...) just under it.
+        /// Implements the map half of Story 004 acceptance criterion 7.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Same name source as the parser.</b> The text comes from
+        /// <see cref="NodeNaming.GetName"/>, which is also what
+        /// <c>TerminalCommandProcessor</c> resolves typed names through - so "имена нод в терминале
+        /// совпадают с подписями на карте" is structural here, not a convention someone has to
+        /// remember. There is no second list of names to keep in step.</para>
+        ///
+        /// <para><b>Why <see cref="TextMesh"/>.</b> A world-space label needs no per-frame
+        /// screen-projection maths and moves with the map for free, whereas a UI Toolkit overlay would
+        /// have to convert every node's world position into panel space every time the camera or the
+        /// topology changed. TextMesh is also the only text path available: TextMeshPro is not
+        /// installed, and the labels are pure ASCII so the legacy dynamic font renders them without a
+        /// glyph-coverage worry.</para>
+        /// </remarks>
+        private GameObject CreateNodeLabel(Node node, Vector2 nodePosition)
+        {
+            var go = new GameObject("Label" + node.Id);
+            go.transform.SetParent(_nodeRoot, false);
+            go.transform.localPosition = new Vector3(
+                nodePosition.x,
+                nodePosition.y + _config.NodeLabelOffsetY,
+                0f);
+
+            MeshRenderer renderer = go.GetComponent<MeshRenderer>();
+            if (renderer == null)
+            {
+                renderer = go.AddComponent<MeshRenderer>();
+            }
+
+            var text = go.AddComponent<TextMesh>();
+            text.text = NodeNaming.GetName(_simulation.Graph, node);
+            text.anchor = TextAnchor.MiddleCenter;
+            text.alignment = TextAlignment.Center;
+            text.color = _config.NodeLabelColor;
+            text.fontSize = _config.NodeLabelFontSize;
+            text.characterSize = _config.NodeLabelCharacterSize;
+
+            Font font = ResolveNodeLabelFont();
+            if (font != null)
+            {
+                text.font = font;
+                renderer.sharedMaterial = font.material;
+            }
+
+            renderer.sortingOrder = NodeLabelSortingOrder;
+            return go;
+        }
+
+        /// <summary>
+        /// Resolves the built-in legacy dynamic font for the map labels, or null if even that is
+        /// unavailable - in which case the labels are simply skipped rather than the map failing.
+        /// </summary>
+        private static Font ResolveNodeLabelFont()
+        {
+            if (_nodeLabelFont != null)
+            {
+                return _nodeLabelFont;
+            }
+
+            try
+            {
+                _nodeLabelFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning("[NightShift] No font for map node labels: " + exception.Message);
+                _nodeLabelFont = null;
+            }
+
+            return _nodeLabelFont;
         }
 
         private void LateUpdate()

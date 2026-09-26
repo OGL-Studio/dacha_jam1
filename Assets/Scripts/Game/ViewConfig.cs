@@ -178,6 +178,71 @@ namespace NightShift.Game
         /// </remarks>
         public float LinkRefundFraction = 0.5f;
 
+        // --- Night phase: terminal (Story 004) ---
+
+        /// <summary>Width of the terminal panel, in reference-resolution pixels.</summary>
+        public float TerminalWidthPx = 430f;
+
+        /// <summary>Height of the terminal panel, in reference-resolution pixels.</summary>
+        public float TerminalHeightPx = 218f;
+
+        /// <summary>Inset of the terminal panel from the left and bottom screen edges, in reference-resolution pixels.</summary>
+        public float TerminalMarginPx = 12f;
+
+        /// <summary>Fill of the terminal panel. Near-opaque so the log stays readable over the map.</summary>
+        public Color TerminalBackgroundColor = new Color(0f, 0.04f, 0.01f, 0.92f);
+
+        /// <summary>Border colour of the terminal panel.</summary>
+        public Color TerminalBorderColor = new Color(0.26f, 0.68f, 0.32f, 1f);
+
+        /// <summary>Border width of the terminal panel, in reference-resolution pixels.</summary>
+        public float TerminalBorderWidthPx = 2f;
+
+        /// <summary>Fill of the single-line input field.</summary>
+        public Color TerminalInputBackgroundColor = new Color(0.02f, 0.10f, 0.03f, 1f);
+
+        /// <summary>Colour of the echoed input lines.</summary>
+        public Color TerminalEchoColor = new Color(0.55f, 0.80f, 0.55f, 1f);
+
+        /// <summary>Colour of a successful command's output.</summary>
+        public Color TerminalOkColor = new Color(0.68f, 0.99f, 0.68f, 1f);
+
+        /// <summary>Colour of a refusal or an error.</summary>
+        public Color TerminalErrorColor = new Color(1f, 0.52f, 0.36f, 1f);
+
+        /// <summary>Colour of the controls hint under the input field.</summary>
+        public Color TerminalHintColor = new Color(0.44f, 0.62f, 0.46f, 1f);
+
+        public float TerminalFontSize = 15f;
+        public float TerminalTitleFontSize = 17f;
+        public float TerminalHintFontSize = 12f;
+
+        /// <summary>
+        /// Oldest lines are dropped once the log exceeds this many, so a long night cannot grow the
+        /// panel's element count without bound.
+        /// </summary>
+        public int TerminalMaxLogLines = 160;
+
+        /// <summary>Key that blurs the terminal input so the gameplay hotkeys work again.</summary>
+        public KeyCode TerminalBlurKey = KeyCode.Escape;
+
+        // --- Map node labels (Story 004 acceptance criterion 7) ---
+
+        /// <summary>Colour of the <c>srv-1</c>-style name drawn under every node on the map.</summary>
+        public Color NodeLabelColor = new Color(0.78f, 0.96f, 0.80f, 1f);
+
+        /// <summary>
+        /// Glyph resolution of the world-space node labels. Higher is sharper and costs font atlas
+        /// space; the on-screen size is this times <see cref="NodeLabelCharacterSize"/>.
+        /// </summary>
+        public int NodeLabelFontSize = 48;
+
+        /// <summary>World units per font unit for the node labels - the knob that sets their apparent size.</summary>
+        public float NodeLabelCharacterSize = 0.042f;
+
+        /// <summary>Vertical offset of a node label from its node's centre, in world units. Negative is below.</summary>
+        public float NodeLabelOffsetY = -0.42f;
+
         // --- Debug (Story 002 acceptance criterion 6) ---
 
         /// <summary>Key that toggles the debug time scale between x1 and <see cref="FastForwardMultiplier"/>.</summary>

@@ -1,12 +1,12 @@
 # Story 004: Терминал и команды
 
 > **Epic**: Ночная смена (MVP)
-> **Status**: Ready
+> **Status**: In Progress
 > **Layer**: Feature
 > **Type**: Logic
 > **Estimate**: 40 min
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-09-26
 
 ## Context
 

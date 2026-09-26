@@ -63,6 +63,30 @@ namespace NightShift.Core
         // --- Core ---
         public int CoreStartingIntegrity = 100;
 
+        // --- Terminal commands (Story 004) ---
+        // Effect durations and cooldowns for the player's night-time interventions. Read by
+        // TerminalCommandProcessor at construction; nothing in the terminal hardcodes a number.
+        // Cooldowns are measured on NetworkSimulation.SimulationTime, so they respect the debug
+        // time scale and freeze between nights.
+
+        /// <summary>Seconds a node stays cut off from the network after a successful <c>isolate</c>.</summary>
+        public float IsolateDuration = 6f;
+
+        /// <summary>Seconds before <c>isolate</c> may be used again, counted from the moment it applied.</summary>
+        public float IsolateCooldown = 14f;
+
+        /// <summary>Seconds every hidden packet stays revealed after a successful <c>scan</c>.</summary>
+        public float ScanDuration = 5f;
+
+        /// <summary>Seconds before <c>scan</c> may be used again.</summary>
+        public float ScanCooldown = 18f;
+
+        /// <summary>Seconds before <c>patch</c> may be used again.</summary>
+        public float PatchCooldown = 10f;
+
+        /// <summary>Cooldown of <c>help</c>. Zero by default: reading the command list is never rationed.</summary>
+        public float HelpCooldown = 0f;
+
         /// <summary>Per-type packet profiles. Story 005 adds entries here for new attack types.</summary>
         public Dictionary<PacketType, PacketDefinition> PacketDefinitions = new Dictionary<PacketType, PacketDefinition>
         {

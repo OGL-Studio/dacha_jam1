@@ -104,7 +104,11 @@ namespace NightShift.Game
             DayBuildController buildController = root.AddComponent<DayBuildController>();
             buildController.Initialize(simulation, runner, mapView, config, layout, mapCamera.Camera);
 
-            CreateUi(root.transform, simulation, runner, buildController, config);
+            // Story 004: the terminal's rules live in Core, so the processor is built here next to the
+            // simulation it acts on and injected into the view - the view owns no command logic.
+            var terminal = new TerminalCommandProcessor(simulation);
+
+            CreateUi(root.transform, simulation, runner, buildController, terminal, config);
 
             // Last: every view is now subscribed, so no phase or packet event can be missed.
             // Story 003 opens in the day phase - the night is the player's decision now. The
@@ -157,6 +161,7 @@ namespace NightShift.Game
             NetworkSimulation simulation,
             GameRunner runner,
             DayBuildController buildController,
+            TerminalCommandProcessor terminal,
             ViewConfig config)
         {
             var uiGo = new GameObject("Ui");
@@ -177,11 +182,21 @@ namespace NightShift.Game
             VisualElement dayLayer = uiRoot.CreateLayer("day-layer", false);
             VisualElement reportLayer = uiRoot.CreateLayer("report-layer", false);
 
+            // Story 004's terminal layer is created last so its panel draws over the map, but it
+            // ignores picking at the layer level: only the terminal panel itself is pickable, so a
+            // full-screen layer above the report layer cannot swallow the report's own buttons.
+            // A PickingMode.Ignore element is excluded from hit-testing itself, not its children.
+            VisualElement terminalLayer = uiRoot.CreateLayer("terminal-layer", true);
+
             uiGo.AddComponent<NightHudView>().Initialize(simulation, runner, config, hudLayer);
             uiGo.AddComponent<DayShopView>().Initialize(simulation, runner, buildController, config, dayLayer);
 
             // The report's only outgoing action is "open the next day", which is the runner's job.
             uiGo.AddComponent<NightReportView>().Initialize(simulation, config, reportLayer, runner.BeginDay);
+
+            // The terminal shows itself only during GamePhase.Night, off the runner's phase event -
+            // like every other view here, it is told nothing by its siblings.
+            uiGo.AddComponent<TerminalView>().Initialize(terminal, runner, config, terminalLayer);
         }
     }
 }

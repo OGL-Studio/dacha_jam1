@@ -102,6 +102,110 @@ namespace NightShift.Game
         /// <summary>Upgrade confirmation, e.g. "Апгрейд: Firewall ур.2 (-80)".</summary>
         public const string UpgradedFormat = "Апгрейд: {0} ур.2 (-{1})";
 
+        // --- Night phase: terminal (Story 004, acceptance criteria 1-8) ---
+
+        public const string TerminalTitle = "ТЕРМИНАЛ";
+
+        /// <summary>The always-visible reminder of the terminal's own controls (criterion 8).</summary>
+        public const string TerminalHint = "Enter — выполнить · ↑/↓ — история · Esc — снять фокус";
+
+        /// <summary>Prefix of the echoed input line, e.g. "&gt; isolate srv-1".</summary>
+        public const string TerminalEchoFormat = "> {0}";
+
+        /// <summary>Line printed when the terminal opens for the night.</summary>
+        public const string TerminalReady = "Смена началась. Введите help.";
+
+        public const string TerminalHelpHeader = "Команды:";
+
+        /// <summary>One row of the help listing: usage line and description.</summary>
+        public const string TerminalHelpRowFormat = "  {0} — {1}";
+
+        public const string CommandDescriptionHelp = "список команд";
+        public const string CommandDescriptionIsolate = "обрубить все связи ноды на время";
+        public const string CommandDescriptionScan = "раскрыть скрытые пакеты";
+        public const string CommandDescriptionPatch = "вернуть ноду в сеть и снять изоляцию";
+        public const string CommandDescriptionUnknown = "без описания";
+
+        public const string TerminalUnknownCommandFormat = "Неизвестная команда: «{0}». Введите help.";
+        public const string TerminalUnknownNodeFormat = "Нет такой ноды: «{0}». Имена подписаны на карте.";
+        public const string TerminalMissingArgumentFormat = "Нужно имя ноды: {0}";
+        public const string TerminalTooManyArgumentsFormat = "Лишние аргументы. Формат: {0}";
+        public const string TerminalCooldownFormat = "{0}: кулдаун, осталось {1:0.0} с.";
+        public const string TerminalIsolateAppliedFormat = "{0} изолирована на {1:0.#} с — пакеты ищут обход.";
+        public const string TerminalIsolateRefusedFormat = "{0} изолировать нельзя.";
+        public const string TerminalScanAppliedFormat = "Скан: скрытые пакеты видны {0:0.#} с.";
+        public const string TerminalPatchAppliedFormat = "{0} восстановлена и снова в сети.";
+        public const string TerminalPatchRefusedFormat = "{0} восстановить не удалось.";
+        public const string TerminalInternalErrorFormat = "Сбой терминала: {0}";
+
+        /// <summary>Russian description of a terminal command, keyed by its command word.</summary>
+        public static string GetCommandDescription(string commandName)
+        {
+            switch (commandName)
+            {
+                case TerminalCommandProcessor.HelpCommand: return CommandDescriptionHelp;
+                case TerminalCommandProcessor.IsolateCommand: return CommandDescriptionIsolate;
+                case TerminalCommandProcessor.ScanCommand: return CommandDescriptionScan;
+                case TerminalCommandProcessor.PatchCommand: return CommandDescriptionPatch;
+                default: return CommandDescriptionUnknown;
+            }
+        }
+
+        /// <summary>
+        /// The single Russian line a <see cref="TerminalCommandResult"/> prints, or null when the
+        /// result needs more than one line (<see cref="TerminalResultCode.Help"/>) or none at all
+        /// (<see cref="TerminalResultCode.Empty"/>).
+        /// </summary>
+        /// <remarks>
+        /// <c>NightShift.Core</c> holds no display text - it returns a
+        /// <see cref="TerminalResultCode"/> plus the node name and the seconds involved, and this is
+        /// where that becomes a sentence. That is why the terminal, unlike the day panel's
+        /// <see cref="RejectedFormat"/>, never shows the player an English string from Core.
+        /// </remarks>
+        /// <param name="result">Outcome returned by <see cref="TerminalCommandProcessor.Execute"/>.</param>
+        /// <param name="usage">
+        /// The command's usage line from <see cref="TerminalCommandInfo.Usage"/>, quoted by the two
+        /// argument errors. Passed in rather than rebuilt here so the command table stays in Core and
+        /// this file cannot print a form the parser does not accept.
+        /// </param>
+        public static string FormatTerminalResult(TerminalCommandResult result, string usage)
+        {
+            if (result == null)
+            {
+                return null;
+            }
+
+            string usageLine = string.IsNullOrEmpty(usage) ? result.CommandName : usage;
+
+            switch (result.Code)
+            {
+                case TerminalResultCode.UnknownCommand:
+                    return string.Format(TerminalUnknownCommandFormat, result.CommandName);
+                case TerminalResultCode.UnknownNode:
+                    return string.Format(TerminalUnknownNodeFormat, result.Argument);
+                case TerminalResultCode.MissingArgument:
+                    return string.Format(TerminalMissingArgumentFormat, usageLine);
+                case TerminalResultCode.TooManyArguments:
+                    return string.Format(TerminalTooManyArgumentsFormat, usageLine);
+                case TerminalResultCode.OnCooldown:
+                    return string.Format(TerminalCooldownFormat, result.CommandName, result.Seconds);
+                case TerminalResultCode.IsolateApplied:
+                    return string.Format(TerminalIsolateAppliedFormat, result.NodeName, result.Seconds);
+                case TerminalResultCode.IsolateRefused:
+                    return string.Format(TerminalIsolateRefusedFormat, result.NodeName);
+                case TerminalResultCode.ScanApplied:
+                    return string.Format(TerminalScanAppliedFormat, result.Seconds);
+                case TerminalResultCode.PatchApplied:
+                    return string.Format(TerminalPatchAppliedFormat, result.NodeName);
+                case TerminalResultCode.PatchRefused:
+                    return string.Format(TerminalPatchRefusedFormat, result.NodeName);
+                case TerminalResultCode.InternalError:
+                    return string.Format(TerminalInternalErrorFormat, result.Diagnostic);
+                default:
+                    return null;
+            }
+        }
+
         /// <summary>
         /// Russian display name of a node type. Lives here rather than in <see cref="ViewConfig"/>
         /// so that every player-visible string in the Unity layer stays in this one file.

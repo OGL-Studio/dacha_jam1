@@ -67,6 +67,21 @@ namespace NightShift.Game
         public float SpeedMultiplier => _speedMultiplier;
 
         /// <summary>
+        /// Set while a text field owns the keyboard, which suppresses every gameplay hotkey read from
+        /// the legacy <see cref="Input"/> class. Raised and lowered by <see cref="TerminalView"/> on
+        /// focus in and focus out (Story 004).
+        /// </summary>
+        /// <remarks>
+        /// <b>Why this is needed at all.</b> Legacy <see cref="Input"/> is polled globally and knows
+        /// nothing about UI Toolkit's focus, so without this flag the F4 in a typed command would also
+        /// toggle the debug time scale behind the player's back. The new Input System would route this
+        /// for us, but that package is not installed here (see
+        /// <see cref="HandleDebugSpeedToggle"/>). Escape blurs the terminal, which lowers the flag and
+        /// hands the hotkeys back.
+        /// </remarks>
+        public bool TextInputActive { get; set; }
+
+        /// <summary>
         /// Seconds left before the night ends, clamped to zero. Derived from
         /// <see cref="NightData.NightDuration"/> - the HUD never hardcodes a night length.
         /// </summary>
@@ -248,7 +263,7 @@ namespace NightShift.Game
         /// </remarks>
         private void HandleDebugSpeedToggle()
         {
-            if (_config == null || !Input.GetKeyDown(_config.FastForwardKey))
+            if (_config == null || TextInputActive || !Input.GetKeyDown(_config.FastForwardKey))
             {
                 return;
             }
