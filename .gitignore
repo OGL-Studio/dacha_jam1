@@ -149,3 +149,8 @@ node_modules/
 *.key
 credentials.json
 secrets.json
+
+# .NET build output of the out-of-editor test projects (dotnet test)
+tests/**/bin/
+tests/**/obj/
+*.trx
