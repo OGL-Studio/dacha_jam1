@@ -1,7 +1,7 @@
 # Story 001: Ядро симуляции сети
 
 > **Epic**: Ночная смена (MVP)
-> **Status**: In Progress
+> **Status**: Complete
 > **Layer**: Foundation
 > **Type**: Logic
 > **Estimate**: 1 h

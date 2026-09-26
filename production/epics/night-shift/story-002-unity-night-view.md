@@ -1,12 +1,12 @@
 # Story 002: Карта и играбельная ночь в Unity
 
 > **Epic**: Ночная смена (MVP)
-> **Status**: Ready
+> **Status**: In Progress
 > **Layer**: Presentation
 > **Type**: Integration
 > **Estimate**: 45 min
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-09-26
 
 ## Context
 
