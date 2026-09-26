@@ -104,3 +104,48 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# === Claude Code Game Studios (from Donchitos/Claude-Code-Game-Studios) ===
+# Claude Code local files
+.claude/settings.local.json
+CLAUDE.local.md
+project.local.yaml
+production/session-logs/
+# Ephemeral per-session checkpoint (the .gitkeep inside is force-tracked)
+production/session-state/
+.scratch/
+# Per-agent working memory written at runtime
+.claude/agent-memory/
+
+# Local sandboxes and scratch work
+examples/
+sandbox/
+sandboxes/
+tests/sandboxes/
+qa-sandbox/
+
+# Runtime artifacts (created on first use by /consistency-check and /architecture-review)
+docs/consistency-failures.md
+
+# Editors / OS
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary and cache
+__pycache__/
+*.pyc
+node_modules/
+
+# Secrets and environment
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
+secrets.json
