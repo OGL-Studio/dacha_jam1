@@ -1,0 +1,961 @@
+<title>Ночная смена</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+:root {
+  --ground:      #EEF1EC;
+  --surface:     #F8FAF7;
+  --surface-alt: #E4E9E2;
+  --line:        #CBD4C9;
+  --line-soft:   #DDE3DB;
+  --ink:         #10180F;
+  --ink-muted:   #566455;
+  --ink-faint:   #7C8A7B;
+
+  --green:       #2F8F3C;
+  --amber:       #9A6B10;
+  --cyan:        #17707A;
+
+  --node-gw:     #B8811C;
+  --node-srv:    #2F8F3C;
+  --node-core:   #17707A;
+  --node-fw:     #C4512A;
+  --node-ids:    #3A62B8;
+  --node-hp:     #96801A;
+
+  --sev-high:    #B5382C;
+  --sev-mid:     #9A6B10;
+  --sev-low:     #4A7A50;
+
+  --hud-ground:  #0A120B;
+  --hud-ink:     #9EEFA6;
+  --hud-dim:     #5E9B66;
+
+  --shadow: 0 1px 2px rgba(16,24,15,.06), 0 8px 24px -12px rgba(16,24,15,.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #050806;
+    --surface:     #0C130D;
+    --surface-alt: #121B13;
+    --line:        #24371F;
+    --line-soft:   #18251A;
+    --ink:         #CDEFCF;
+    --ink-muted:   #8AAE8D;
+    --ink-faint:   #63805F;
+
+    --green:       #5FD96B;
+    --amber:       #F2B441;
+    --cyan:        #8CF2F2;
+
+    --node-gw:     #F2B83A;
+    --node-srv:    #59D966;
+    --node-core:   #8CF2F2;
+    --node-fw:     #F26B40;
+    --node-ids:    #73A6FA;
+    --node-hp:     #EBD959;
+
+    --sev-high:    #F2705C;
+    --sev-mid:     #F2B441;
+    --sev-low:     #6FC078;
+
+    --hud-ground:  #0A120B;
+    --hud-ink:     #9EEFA6;
+    --hud-dim:     #5E9B66;
+
+    --shadow: 0 0 0 1px rgba(95,217,107,.06), 0 12px 32px -18px rgba(0,0,0,.9);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:      #050806;
+  --surface:     #0C130D;
+  --surface-alt: #121B13;
+  --line:        #24371F;
+  --line-soft:   #18251A;
+  --ink:         #CDEFCF;
+  --ink-muted:   #8AAE8D;
+  --ink-faint:   #63805F;
+
+  --green:       #5FD96B;
+  --amber:       #F2B441;
+  --cyan:        #8CF2F2;
+
+  --node-gw:     #F2B83A;
+  --node-srv:    #59D966;
+  --node-core:   #8CF2F2;
+  --node-fw:     #F26B40;
+  --node-ids:    #73A6FA;
+  --node-hp:     #EBD959;
+
+  --sev-high:    #F2705C;
+  --sev-mid:     #F2B441;
+  --sev-low:     #6FC078;
+
+  --hud-ground:  #0A120B;
+  --hud-ink:     #9EEFA6;
+  --hud-dim:     #5E9B66;
+
+  --shadow: 0 0 0 1px rgba(95,217,107,.06), 0 12px 32px -18px rgba(0,0,0,.9);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+/* ---------- HUD header, modelled on the game's own top bar ---------- */
+
+.hud {
+  background: var(--hud-ground);
+  color: var(--hud-ink);
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  border-bottom: 1px solid #1D3320;
+  position: relative;
+  overflow: hidden;
+}
+.hud::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255,255,255,.035) 0 1px,
+    transparent 1px 3px
+  );
+}
+.hud-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 10px 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  font-size: 13px;
+  letter-spacing: .02em;
+}
+.hud-inner b { font-weight: 700; color: #C7FFCC; }
+.hud-inner span { color: var(--hud-dim); }
+
+/* ---------- Masthead ---------- */
+
+.masthead {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 56px 28px 40px;
+  border-bottom: 1px solid var(--line);
+}
+.eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--green);
+  margin: 0 0 14px;
+}
+h1 {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-weight: 700;
+  font-size: clamp(2.1rem, 5.4vw, 3.4rem);
+  line-height: 1.06;
+  letter-spacing: -.01em;
+  margin: 0 0 18px;
+  text-wrap: balance;
+}
+.deck {
+  max-width: 62ch;
+  font-size: 1.12rem;
+  color: var(--ink-muted);
+  margin: 0 0 26px;
+}
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+.meta-row b { color: var(--ink); font-weight: 500; }
+
+/* ---------- Shell ---------- */
+
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px 96px;
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  gap: 56px;
+  align-items: start;
+}
+
+nav.toc {
+  position: sticky;
+  top: 24px;
+  padding-top: 40px;
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+nav.toc p {
+  margin: 0 0 12px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+nav.toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  counter-reset: toc;
+}
+nav.toc a {
+  color: var(--ink-muted);
+  text-decoration: none;
+  display: block;
+  border-left: 2px solid var(--line-soft);
+  padding: 2px 0 2px 11px;
+  transition: color .12s, border-color .12s;
+}
+nav.toc a::before {
+  counter-increment: toc;
+  content: counter(toc, decimal-leading-zero) " ";
+  color: var(--ink-faint);
+}
+nav.toc a:hover,
+nav.toc a:focus-visible {
+  color: var(--green);
+  border-left-color: var(--green);
+  outline: none;
+}
+
+main { padding-top: 40px; min-width: 0; }
+
+section { margin-bottom: 60px; scroll-margin-top: 20px; }
+
+h2 {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-weight: 700;
+  font-size: 1.32rem;
+  letter-spacing: -.005em;
+  margin: 0 0 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  text-wrap: balance;
+}
+h2 .num {
+  color: var(--green);
+  font-size: .8em;
+  font-weight: 500;
+}
+h3 {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: .01em;
+  margin: 30px 0 8px;
+  color: var(--ink);
+}
+
+p { max-width: 68ch; margin: 14px 0; }
+section > p:first-of-type { margin-top: 18px; }
+
+ul, ol.body-list { max-width: 68ch; padding-left: 20px; margin: 14px 0; }
+li { margin: 7px 0; }
+
+strong { font-weight: 600; }
+code {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: .87em;
+  background: var(--surface-alt);
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  padding: .08em .36em;
+}
+
+a.inline { color: var(--green); }
+
+/* ---------- Tables ---------- */
+
+.scroller {
+  overflow-x: auto;
+  margin: 20px 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14.5px;
+}
+th, td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+}
+thead th {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 500;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: none; }
+td.num, th.num {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+td .name {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---------- Terminal panel ---------- */
+
+.term {
+  background: var(--hud-ground);
+  border: 1px solid #1D3320;
+  color: var(--hud-ink);
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  padding: 16px 18px;
+  margin: 20px 0;
+  overflow-x: auto;
+  white-space: pre;
+  box-shadow: var(--shadow);
+}
+.term .dim { color: var(--hud-dim); }
+
+/* ---------- Callout ---------- */
+
+.note {
+  border-left: 3px solid var(--amber);
+  background: var(--surface);
+  padding: 14px 18px;
+  margin: 22px 0;
+  max-width: 68ch;
+}
+.note p { margin: 0; }
+.note p + p { margin-top: 10px; }
+.note .tag {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--amber);
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* ---------- Severity chips ---------- */
+
+.chip {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  white-space: nowrap;
+  display: inline-block;
+}
+.chip.high { color: var(--sev-high); }
+.chip.mid  { color: var(--sev-mid); }
+.chip.low  { color: var(--sev-low); }
+
+/* ---------- Loop strip ---------- */
+
+.loop {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  margin: 22px 0;
+  box-shadow: var(--shadow);
+}
+.loop > div {
+  background: var(--surface);
+  padding: 16px 18px;
+}
+.loop h4 {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  margin: 0 0 8px;
+  color: var(--green);
+}
+.loop p { margin: 0; font-size: 14px; color: var(--ink-muted); max-width: none; }
+
+/* ---------- Diagram ---------- */
+
+figure { margin: 24px 0; }
+.diagram {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 20px;
+  overflow-x: auto;
+  box-shadow: var(--shadow);
+}
+.diagram svg { display: block; min-width: 560px; }
+figcaption {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: 10px;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 14px;
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+/* ---------- Footer ---------- */
+
+footer {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 22px;
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  color: var(--ink-faint);
+  max-width: 68ch;
+}
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; gap: 0; }
+  nav.toc { position: static; padding-top: 32px; }
+  nav.toc ol { flex-direction: row; flex-wrap: wrap; gap: 6px 16px; }
+  nav.toc a { border-left: none; padding-left: 0; }
+  main { padding-top: 28px; }
+  .masthead { padding: 40px 22px 32px; }
+  .shell { padding: 0 22px 64px; }
+  .hud-inner { padding: 10px 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+
+<div class="hud">
+  <div class="hud-inner">
+    <b>НОЧНАЯ СМЕНА</b>
+    <span>Дизайн-документ</span>
+    <span>Ядро: 100/100</span>
+    <span>Ночей: 5</span>
+    <span>Статус: MVP готов</span>
+  </div>
+</div>
+
+<header class="masthead">
+  <p class="eyebrow">Передача проекта · Unity 6.3 LTS</p>
+  <h1>Ночная смена</h1>
+  <p class="deck">
+    Tower defense на схеме корпоративной сети. Днём инженер ИБ строит топологию и
+    расставляет средства защиты, ночью отбивает атаки, которые с каждой сменой всё
+    меньше похожи на человеческие.
+  </p>
+  <div class="meta-row">
+    <span>Обновлён <b>26.09.2026</b></span>
+    <span>Движок <b>Unity 6000.3.11f1</b></span>
+    <span>Платформа <b>Windows</b></span>
+    <span>Тесты <b>69 / 69</b></span>
+  </div>
+</header>
+
+<div class="shell">
+
+  <nav class="toc">
+    <p>Разделы</p>
+    <ol>
+      <li><a href="#s1">Что это за игра</a></li>
+      <li><a href="#s2">Игровой цикл</a></li>
+      <li><a href="#s3">Карта и ноды</a></li>
+      <li><a href="#s4">Средства защиты</a></li>
+      <li><a href="#s5">Атаки</a></li>
+      <li><a href="#s6">Терминал</a></li>
+      <li><a href="#s7">Пять ночей</a></li>
+      <li><a href="#s8">Out of Control</a></li>
+      <li><a href="#s9">Экономика</a></li>
+      <li><a href="#s10">Архитектура</a></li>
+      <li><a href="#s11">Сборка и запуск</a></li>
+      <li><a href="#s12">Статус</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <div class="note">
+      <span class="tag">Как читать этот документ</span>
+      <p>
+        Здесь описана игра в том виде, в каком она существует <strong>в коде</strong>, а не в виде
+        замысла. Все числа взяты из <code>GameData.cs</code> и <code>NightLibrary.cs</code>.
+        Правите баланс — правьте там, а не здесь, и обновите документ.
+      </p>
+    </div>
+
+    <section id="s1">
+      <h2><span class="num">01</span> Что это за игра</h2>
+      <p>
+        Жанр — tower defense, скрещённый с медленным хоррором. Сделано за джем на тему
+        «Out of Control», и вся конструкция игры подчинена этой теме: она не про то, что
+        враг сильнее, а про то, что инструменты перестают слушаться.
+      </p>
+      <p>
+        Целевое ощущение — <strong>«всё под контролем… пока нет»</strong>: спокойная рутина
+        первых ночей, переходящая в тревогу. Аудитория — любители tower defense и тихого
+        нарастающего хоррора в духе Voices of the Void. Весь текст в игре русский.
+      </p>
+    </section>
+
+    <section id="s2">
+      <h2><span class="num">02</span> Игровой цикл</h2>
+      <p>Игра идёт пятью сутками. Одни сутки — это день и ночь.</p>
+
+      <div class="loop">
+        <div>
+          <h4>День · монтаж</h4>
+          <p>Письма офицеров ИБ, затем стройка за кредиты: ноды, связи, апгрейды. Время стоит, торопиться некуда.</p>
+        </div>
+        <div>
+          <h4>Ночь · дежурство</h4>
+          <p>5–7 минут. Серверы приносят доход, атаки идут к Ядру, защита работает сама. Игрок вмешивается через терминал.</p>
+        </div>
+        <div>
+          <h4>Утро · отчёт</h4>
+          <p>Заработано, заблокировано, пропущено, урон Ядру. Дальше следующий день с сохранённой сетью.</p>
+        </div>
+      </div>
+
+      <h3>Цель и поражение</h3>
+      <ul>
+        <li><strong>Цель:</strong> продержаться 5 ночей.</li>
+        <li><strong>Поражение:</strong> целостность Ядра падает до нуля — экран «Вы уволены».</li>
+        <li><strong>Победа:</strong> в конце ночи 5 сеть выходит из-под контроля, обычные команды
+          отказывают, и остаётся одна — <code>shutdown --all</code>. Игрок выдёргивает рубильник.</li>
+      </ul>
+
+      <div class="note">
+        <span class="tag">Ключевое для баланса</span>
+        <p>
+          <strong>Целостность Ядра не восстанавливается между ночами.</strong> Сто единиц выдаётся
+          на всю кампанию, механики ремонта нет. Это самое сильное ограничение в игре — и причина,
+          по которой проходимость поздних ночей до сих пор под вопросом (раздел 12).
+        </p>
+      </div>
+    </section>
+
+    <section id="s3">
+      <h2><span class="num">03</span> Карта и ноды</h2>
+      <p>
+        Сеть — граф на сетке <strong>12 × 7 клеток</strong>. Нода занимает одну клетку. Связь
+        соединяет две ноды не дальше <strong>6 клеток</strong> друг от друга (манхэттенское
+        расстояние). Имена нод подписаны прямо на карте — это те же имена, которые принимает
+        терминал, регистр не важен.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Нода</th><th>Имя</th><th>Роль</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="name">Шлюз</td><td class="num">gw</td><td>Точка входа атак. Левый край, один, не продаётся.</td></tr>
+            <tr><td class="name">Ядро</td><td class="num">core</td><td>То, что защищаем. Правый край, одно, не продаётся.</td></tr>
+            <tr><td class="name">Сервер</td><td class="num">srv-N</td><td>Приносит доход, пока в сети и есть путь и до Шлюза, и до Ядра.</td></tr>
+            <tr><td class="name">Firewall</td><td class="num">fw-N</td><td>Снимает HP с проходящих <em>видимых</em> пакетов.</td></tr>
+            <tr><td class="name">IDS</td><td class="num">ids-N</td><td>Раскрывает скрытые пакеты рядом, замедляет пакеты на своих связях.</td></tr>
+            <tr><td class="name">Honeypot</td><td class="num">hp-N</td><td>Перетягивает пакеты с соседних нод на себя и уничтожает.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 552 322" width="552" height="322" role="img" aria-label="Схема стартовой сети: шлюз слева соединён через два файрвола и сервер с ядром справа, с ответвлениями на honeypot, второй сервер и IDS">
+            <g stroke="var(--line)" stroke-width="1">
+              <path d="M0 .5H552M0 46.5H552M0 92.5H552M0 138.5H552M0 184.5H552M0 230.5H552M0 276.5H552M0 321.5H552"/>
+              <path d="M.5 0V322M46.5 0V322M92.5 0V322M138.5 0V322M184.5 0V322M230.5 0V322M276.5 0V322M322.5 0V322M368.5 0V322M414.5 0V322M460.5 0V322M506.5 0V322M551.5 0V322"/>
+            </g>
+            <g stroke="var(--node-srv)" stroke-width="2.5" fill="none" opacity=".85">
+              <path d="M23 161H161M161 161H299M299 161H391M391 161H529"/>
+              <path d="M161 161V253M299 161V69M391 161V253"/>
+            </g>
+            <g>
+              <path d="M23 143 41 161 23 179 5 161Z" fill="var(--node-gw)"/>
+              <circle cx="161" cy="161" r="13" fill="none" stroke="var(--node-fw)" stroke-width="6"/>
+              <circle cx="299" cy="161" r="13" fill="none" stroke="var(--node-fw)" stroke-width="6"/>
+              <rect x="378" y="148" width="26" height="26" fill="var(--node-srv)"/>
+              <path d="M529 145 542 153V169L529 177 516 169V153Z" fill="var(--node-core)"/>
+              <circle cx="161" cy="253" r="14" fill="var(--node-hp)"/>
+              <rect x="286" y="56" width="26" height="26" fill="var(--node-srv)"/>
+              <path d="M391 240 404 265H378Z" fill="var(--node-ids)"/>
+            </g>
+            <g fill="var(--ink-muted)" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="middle">
+              <text x="23" y="197">gw</text>
+              <text x="161" y="190">fw-1</text>
+              <text x="299" y="190">fw-2</text>
+              <text x="391" y="190">srv-1</text>
+              <text x="529" y="197">core</text>
+              <text x="161" y="282">hp-1</text>
+              <text x="299" y="98">srv-2</text>
+              <text x="391" y="282">ids-1</text>
+            </g>
+          </svg>
+        </div>
+        <figcaption>Стартовая сеть — одинаковая в начале каждой кампании.</figcaption>
+        <div class="legend">
+          <span><i style="background:var(--node-gw)"></i>Шлюз</span>
+          <span><i style="background:var(--node-srv)"></i>Сервер</span>
+          <span><i style="background:var(--node-core)"></i>Ядро</span>
+          <span><i style="background:var(--node-fw)"></i>Firewall</span>
+          <span><i style="background:var(--node-ids)"></i>IDS</span>
+          <span><i style="background:var(--node-hp)"></i>Honeypot</span>
+        </div>
+      </figure>
+    </section>
+
+    <section id="s4">
+      <h2><span class="num">04</span> Средства защиты</h2>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Средство</th><th class="num">Цена</th><th class="num">Апгрейд</th><th>Уровень 1</th><th>Уровень 2</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="name">Firewall</td><td class="num">40</td><td class="num">80</td><td>снимает 20 HP</td><td>снимает 40 HP</td></tr>
+            <tr><td class="name">IDS</td><td class="num">60</td><td class="num">100</td><td>замедление ×0.5</td><td>замедление ×0.3</td></tr>
+            <tr><td class="name">Honeypot</td><td class="num">45</td><td class="num">90</td><td>ёмкость 3 пакета</td><td>ёмкость 6 пакетов</td></tr>
+            <tr><td class="name">Сервер</td><td class="num">50</td><td class="num">—</td><td>доход 5 кредитов/с</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        <strong>Firewall не видит скрытые пакеты</strong>, пока их не раскроют. В этом весь смысл
+        связки IDS + Firewall: IDS раскрывает, Firewall режет. <strong>Honeypot расходуется</strong> —
+        исчерпав ёмкость, перестаёт перетягивать.
+      </p>
+    </section>
+
+    <section id="s5">
+      <h2><span class="num">05</span> Атаки</h2>
+      <p>
+        Семь типов пакетов. Все идут от Шлюза и на каждой ноде пересчитывают кратчайший по числу
+        переходов путь к цели. Если пути нет — пакет рассеивается без урона.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Тип</th><th class="num">Скор.</th><th class="num">HP</th><th class="num">Урон</th><th>Особенность</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="name">Обычный</td><td class="num">2.0</td><td class="num">30</td><td class="num">10</td><td>базовый</td></tr>
+            <tr><td class="name">Скрытый</td><td class="num">1.5</td><td class="num">20</td><td class="num">8</td><td>невидим, пока не раскроют</td></tr>
+            <tr><td class="name">Скан</td><td class="num">4.0</td><td class="num">10</td><td class="num">3</td><td>быстрый и хрупкий: умирает о любой Firewall, но проскакивает незащищённый участок раньше, чем успеешь среагировать</td></tr>
+            <tr><td class="name">Брутфорс</td><td class="num">1.2</td><td class="num">90</td><td class="num">18</td><td>переживает два Firewall ур.1 и один ур.2 — нужен апгрейд, Honeypot или изоляция</td></tr>
+            <tr><td class="name">DDoS</td><td class="num">3.0</td><td class="num">8</td><td class="num">3</td><td>идёт не в Ядро, а в конкретный Сервер и <strong>роняет его на 20 секунд</strong>: платите не целостностью, а потерянным доходом</td></tr>
+            <tr><td class="name">Червь</td><td class="num">1.5</td><td class="num">40</td><td class="num">6</td><td>заражает Сервер; заражённый <strong>сам шлёт червей соседям каждые 14 с</strong>, пока не сделать <code>patch</code></td></tr>
+            <tr><td class="name">Аномалия</td><td class="num">1.8</td><td class="num">25</td><td class="num">12</td><td>скрытая, и <strong>ходит между соседними клетками там, где связи нет вообще</strong>. Изоляция её всё-таки останавливает</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="s6">
+      <h2><span class="num">06</span> Терминал</h2>
+      <p>
+        Ночью доступна консоль: поле ввода, история вывода с прокруткой, <code>↑</code>/<code>↓</code> —
+        предыдущие команды, <code>Esc</code> — снять фокус.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Команда</th><th>Действие</th><th class="num">Длительность</th><th class="num">Кулдаун</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="name">help</td><td>список команд</td><td class="num">—</td><td class="num">нет</td></tr>
+            <tr><td class="name">isolate &lt;нода&gt;</td><td>обрубает все связи ноды</td><td class="num">6 с</td><td class="num">14 с</td></tr>
+            <tr><td class="name">scan</td><td>раскрывает все скрытые пакеты</td><td class="num">5 с</td><td class="num">18 с</td></tr>
+            <tr><td class="name">patch &lt;нода&gt;</td><td>лечит заражённую или упавшую ноду</td><td class="num">мгновенно</td><td class="num">10 с</td></tr>
+            <tr><td class="name">shutdown --all</td><td>финал ночи 5</td><td class="num">—</td><td class="num">нет</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="term">&gt; isolate fw-1
+<span class="dim">fw-1 изолирована на 6 с — пакеты ищут обход.</span>
+
+&gt; scan
+<span class="dim">Скан: скрытые пакеты видны 5 с.</span>
+
+&gt; isolate fw-1
+<span class="dim">isolate: кулдаун, осталось 11.4 с.</span></div>
+
+      <p>
+        Вызов в кулдауне пишет остаток времени и ничего не делает. Неизвестная команда, неверное
+        имя ноды или лишние аргументы дают понятную ошибку и никогда не роняют игру.
+        <code>shutdown --all</code> спрятана из <code>help</code> и отклоняется, пока сеть не вышла
+        из-под контроля.
+      </p>
+    </section>
+
+    <section id="s7">
+      <h2><span class="num">07</span> Пять ночей</h2>
+      <p>
+        Ночи целиком описаны данными в <code>NightLibrary.cs</code>. Код ночей не содержит ни одного
+        балансного числа — это единственное место, где меняется сложность.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th class="num">Ночь</th><th class="num">Длина</th><th>Что нового</th><th class="num">Сбой команд</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="num">1</td><td class="num">300 с</td><td>обычные и скрытые пакеты — обучение</td><td class="num">—</td></tr>
+            <tr><td class="num">2</td><td class="num">320 с</td><td>скан, брутфорс</td><td class="num">—</td></tr>
+            <tr><td class="num">3</td><td class="num">350 с</td><td>DDoS; <strong>в сети сами появляются чужие ноды</strong> (2 шт.)</td><td class="num">—</td></tr>
+            <tr><td class="num">4</td><td class="num">390 с</td><td>червь, аномалия; ещё 2 чужие ноды</td><td class="num">12 %</td></tr>
+            <tr><td class="num">5</td><td class="num">420 с</td><td>всё сразу, два потока DDoS</td><td class="num">20 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="s8">
+      <h2><span class="num">08</span> «Out of Control» — как нарастает тема</h2>
+      <p>Тема джема реализована тремя механиками, включающимися по нарастающей.</p>
+
+      <h3>Ночи 3–4 · чужие ноды</h3>
+      <p>
+        В сети появляются Серверы, которых игрок не ставил, и сами подключаются к существующим
+        нодам. Их <strong>нельзя продать</strong> — только изолировать. Доход они не приносят.
+        На карте отличаются подписью <code>x-N</code>.
+      </p>
+
+      <h3>Ночи 4–5 · терминал врёт</h3>
+      <p>
+        С вероятностью 12 % и 20 % команда срабатывает <strong>не на ту ноду</strong>, которую
+        назвал игрок. Об этом честно пишется в лог — игрок должен видеть, что подвёл инструмент,
+        а не что сломалась игра. Разница принципиальная: первое — драматургия, второе — баг.
+      </p>
+
+      <h3>Финал ночи 5</h3>
+      <p>
+        Время выходит, но отчёта нет: сеть вне контроля. <code>isolate</code>, <code>scan</code> и
+        <code>patch</code> отвечают отказом. Работает только <code>shutdown --all</code>.
+      </p>
+
+      <p>
+        Сюжет идёт параллельно: письма офицеров ИБ перед каждым днём — тон мрачнеет от ночи к ночи,
+        к пятой письма искажены — и реплики в лог по таймингу во время ночи.
+      </p>
+    </section>
+
+    <section id="s9">
+      <h2><span class="num">09</span> Экономика</h2>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Статья</th><th>Значение</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Стартовый капитал</td><td class="num">200 кредитов</td></tr>
+            <tr><td>Доход Сервера</td><td class="num">5 кредитов/с <span style="color:var(--ink-faint)">— только пока онлайн и есть путь до Шлюза <em>и</em> до Ядра</span></td></tr>
+            <tr><td>Связь</td><td class="num">5 кредитов за клетку, максимум 6 клеток</td></tr>
+            <tr><td>Возврат за снятую связь</td><td class="num">50 %</td></tr>
+            <tr><td>Целостность Ядра</td><td class="num">100, не восстанавливается</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="s10">
+      <h2><span class="num">10</span> Архитектура — для программистов</h2>
+      <p>
+        Главное архитектурное решение: <strong>вся игровая логика лежит в сборке, которая ничего
+        не знает про Unity.</strong>
+      </p>
+
+      <div class="term">Assets/Scripts/Core/   <span class="dim">NightShift.Core · noEngineReferences: true</span>
+                       <span class="dim">симуляция, граф, пакеты, экономика, парсер</span>
+                       <span class="dim">команд, данные ночей и текстов · 27 файлов</span>
+                       <span class="dim">НИ ОДНОГО using UnityEngine</span>
+
+Assets/Scripts/Game/   <span class="dim">NightShift.Game · слой представления</span>
+                       <span class="dim">отрисовка, UI, ввод, бутстрап · 30 файлов</span>
+
+tests/unit/core/       <span class="dim">69 модульных тестов, обычный dotnet test</span>
+                       <span class="dim">Unity для них не нужен</span></div>
+
+      <p>
+        Что это даёт: правила игры тестируются за секунду без запуска движка, а представление можно
+        переписать, не трогая баланс.
+      </p>
+
+      <h3>Решения, которые стоит знать до того, как править код</h3>
+      <ul>
+        <li><strong>Вся сцена строится из кода</strong> через <code>[RuntimeInitializeOnLoadMethod]</code>
+          в <code>GameBootstrap</code>. Сцена <code>Main.unity</code> пустая. Никакой ручной сборки
+          в редакторе — значит, ничего не ломается при слиянии.</li>
+        <li><strong>Вью не владеет ни одним правилом.</strong> UI вызывает <code>TryPlaceNode</code>,
+          <code>TryAddLink</code>, <code>TryUpgrade</code> и показывает причину отказа, которую вернуло
+          ядро. Вторая копия проверки «хватает ли денег» во вью запрещена.</li>
+        <li><strong>Типы атак — это данные, а не код.</strong> Симуляция ветвится по флагам поведения
+          (<code>DisablesTargetServer</code>, <code>InfectsServer</code>, <code>CanCrossMissingLinks</code>),
+          а не по перечислению. Шестой тип атаки добавляется правкой данных.</li>
+        <li><strong>Имена нод выводятся, а не хранятся.</strong> <code>NodeNaming</code> считает имя из
+          типа и порядкового номера; карта и терминал берут имя из одного источника, поэтому
+          разъехаться не могут.</li>
+        <li><strong>Слои UI и попадание мышью — известная ловушка.</strong> Полноэкранный «кликабельный»
+          слой перехватывает клики по всему экрану навсегда. Все слои, кроме
+          <code>pointer-floor-layer</code>, обязаны иметь <code>ignorePicking: true</code>. Это уже
+          однажды стоило критического бага.</li>
+      </ul>
+    </section>
+
+    <section id="s11">
+      <h2><span class="num">11</span> Сборка и запуск</h2>
+
+      <h3>Сборка</h3>
+      <p>Редактор Unity должен быть закрыт — он держит блокировку проекта, и сборка упадёт.</p>
+      <div class="term">Unity.exe -batchmode -projectPath &lt;путь&gt; \
+  -executeMethod NightShift.Game.EditorTools.PlayerBuild.BuildWindows \
+  -logFile &lt;путь к логу&gt;</div>
+
+      <h3>Тесты</h3>
+      <div class="term">cd tests/unit/core &amp;&amp; dotnet test     <span class="dim"># ожидается 69 passed</span></div>
+
+      <h3>Запуск с автоснимками — для QA</h3>
+      <div class="term">Builds/Windows/NightShift.exe --shotdir &lt;абс. путь&gt; \
+  --atsim 8,12 --timescale 4 --skipday</div>
+      <ul>
+        <li><code>--at</code> — секунды реального времени, <code>--atsim</code> — игрового</li>
+        <li><code>--skipday</code> — сразу в ночь, минуя меню и день</li>
+        <li><code>--speed 4</code> — стартовое ускорение</li>
+      </ul>
+
+      <div class="note">
+        <span class="tag">Если игрок сообщает о баге</span>
+        <p>
+          Сначала откройте <code>%LOCALAPPDATA%Low\DefaultCompany\dacha_jam1\Player.log</code>.
+          Оба бага, найденных в этом проекте, лежали там готовыми стек-трейсами, пока их искали
+          чтением исходников.
+        </p>
+      </div>
+    </section>
+
+    <section id="s12">
+      <h2><span class="num">12</span> Статус</h2>
+
+      <h3>Готово и проверено</h3>
+      <p>
+        Весь MVP: ядро симуляции, карта и ночь, дневное строительство, терминал, пять ночей
+        с нарастанием, сюжет и экраны, главное меню, настройки размера окна, справка.
+      </p>
+
+      <h3>Не сделано</h3>
+      <ul>
+        <li>
+          <strong>3D-комната.</strong> Фиксированная камера на стол с монитором, игра рендерится
+          на экран монитора. Единственная незакрытая история. По условию должна отключаться одним
+          флагом с откатом в обычный 2D — <strong>рендер в текстуру ломает попадание мышью</strong>,
+          а это самое хрупкое место проекта.
+        </li>
+        <li>
+          <strong>Перенос и удаление поставленных нод.</strong> Решено: удаление возвращает полную
+          стоимость ноды и её связей; при переносе связи сохраняются, длина пересчитывается.
+          В ядре <strong>нет API удаления ноды</strong> — его нужно добавить, и одновременно
+          закрепить порядковые номера при создании: иначе удаление <code>srv-1</code> переименует
+          <code>srv-2</code> и сломает имена в терминале.
+        </li>
+      </ul>
+
+      <h3>Известные проблемы</h3>
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Проблема</th><th>Серьёзность</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Проходимость ночей 3–5 никем не проверена. Целостность Ядра не лечится всю кампанию, так что кампания может быть непроходима в принципе — нужен плейтест и, вероятно, ребаланс <code>NightLibrary.cs</code></td>
+              <td><span class="chip high">Высокая</span></td>
+            </tr>
+            <tr>
+              <td>Ночь 5 без ввода <code>shutdown --all</code> заканчивается обычным отчётом и уходит в повторяющийся «день 6»</td>
+              <td><span class="chip mid">Средняя</span></td>
+            </tr>
+            <tr>
+              <td>Чужие ноды выглядят как обычные Серверы, отличаются только подписью <code>x-N</code></td>
+              <td><span class="chip low">Низкая</span></td>
+            </tr>
+            <tr>
+              <td>Кнопка меню может сохранить фокус после закрытия экрана — теоретический риск, ни разу не наблюдался</td>
+              <td><span class="chip low">Низкая</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Чего в игре сознательно нет</h3>
+      <p>
+        Сохранения, мультиплеер, озвучка, ходьба по 3D-комнате, процедурная генерация сети, больше
+        трёх типов средств защиты, реалистичная сетевая модель — IP и порты только антураж.
+        Внешних ассетов нет вообще: вся графика собрана из примитивов в коде.
+      </p>
+    </section>
+
+    <footer>
+      Источник истины — код. Числа сверены с GameData.cs и NightLibrary.cs на 26.09.2026.
+      Расхождение документа с кодом трактуется в пользу кода.
+    </footer>
+
+  </main>
+</div>
