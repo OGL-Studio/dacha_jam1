@@ -54,5 +54,17 @@ namespace NightShift.Core
         /// that acceptance criterion 6's "без исключений" holds even for a defect.
         /// </summary>
         InternalError = 12,
+
+        /// <summary><c>shutdown --all</c> succeeded: the network is down and the shift is over. The victory ending (Story 005).</summary>
+        ShutdownApplied = 13,
+
+        /// <summary><c>shutdown --all</c> was typed before the network went out of control — there is nothing to shut down yet.</summary>
+        ShutdownUnavailable = 14,
+
+        /// <summary>The network is out of control: every command except <c>shutdown --all</c> (and <c>help</c>) is refused.</summary>
+        CommandLockedOutOfControl = 15,
+
+        /// <summary>The argument is not one this command accepts (e.g. <c>shutdown</c> without <c>--all</c>).</summary>
+        InvalidArgument = 16,
     }
 }

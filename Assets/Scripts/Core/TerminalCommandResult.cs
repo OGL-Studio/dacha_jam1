@@ -53,6 +53,19 @@ namespace NightShift.Core
         /// <summary>The command table, populated only for <see cref="TerminalResultCode.Help"/>.</summary>
         public IReadOnlyList<TerminalCommandInfo> Commands { get; }
 
+        /// <summary>
+        /// True when the command took effect on a node other than the one the player named — Story
+        /// 005 acceptance criterion 4. <see cref="NodeName"/> is then the node that was actually hit
+        /// and <see cref="IntendedNodeName"/> the one that was asked for, and the log has to say so.
+        /// </summary>
+        public bool Misfired { get; }
+
+        /// <summary>
+        /// Canonical name of the node the player meant, populated only when <see cref="Misfired"/> is
+        /// true. Empty otherwise.
+        /// </summary>
+        public string IntendedNodeName { get; }
+
         /// <summary>Non-localised description for logs and tests. Not player-facing.</summary>
         public string Diagnostic { get; }
 
@@ -64,8 +77,12 @@ namespace NightShift.Core
             string nodeName,
             float seconds,
             IReadOnlyList<TerminalCommandInfo> commands,
-            string diagnostic)
+            string diagnostic,
+            bool misfired = false,
+            string intendedNodeName = null)
         {
+            Misfired = misfired;
+            IntendedNodeName = intendedNodeName ?? string.Empty;
             Success = success;
             Code = code;
             CommandName = commandName ?? string.Empty;
@@ -90,6 +107,23 @@ namespace NightShift.Core
             TerminalResultCode code, string commandName, string argument, string nodeName, float seconds) =>
             new TerminalCommandResult(
                 true, code, commandName, argument, nodeName, seconds, null, code + " on '" + nodeName + "'.");
+
+        /// <summary>
+        /// A successful effect that landed on the wrong node (Story 005 acceptance criterion 4).
+        /// <paramref name="nodeName"/> is the node actually affected, <paramref name="intendedNodeName"/>
+        /// the one the player typed.
+        /// </summary>
+        public static TerminalCommandResult AppliedMisfire(
+            TerminalResultCode code,
+            string commandName,
+            string argument,
+            string nodeName,
+            string intendedNodeName,
+            float seconds) =>
+            new TerminalCommandResult(
+                true, code, commandName, argument, nodeName, seconds, null,
+                code + " MISFIRED onto '" + nodeName + "' instead of '" + intendedNodeName + "'.",
+                true, intendedNodeName);
 
         /// <summary>A rejection. Nothing in the simulation changed and no cooldown was started.</summary>
         public static TerminalCommandResult Rejected(

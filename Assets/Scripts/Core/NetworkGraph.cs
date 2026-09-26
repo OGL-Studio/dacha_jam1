@@ -20,6 +20,10 @@ namespace NightShift.Core
     /// </example>
     public sealed class NetworkGraph
     {
+        /// <summary>The four orthogonal grid steps, paired with <see cref="GridStepY"/>. Used only for «аномалия» phantom routing.</summary>
+        private static readonly int[] GridStepX = { 1, -1, 0, 0 };
+        private static readonly int[] GridStepY = { 0, 0, 1, -1 };
+
         private readonly GameData _data;
         private readonly Node[,] _cells;
         private readonly Dictionary<int, Node> _nodesById = new Dictionary<int, Node>();
@@ -206,6 +210,108 @@ namespace NightShift.Core
             _linksByKey.TryGetValue(new Link(nodeAId, nodeBId, 0), out link);
 
         /// <summary>
+        /// The length in cells a packet must cross to get from one node to the other: the
+        /// <see cref="Link.Length"/> of the link between them, or — when
+        /// <paramref name="allowGridAdjacency"/> is true and the two nodes sit in orthogonally
+        /// neighbouring cells — 1, even though no link exists. Story 005's «аномалия» is the only
+        /// packet that passes true (see <see cref="PacketDefinition.CanCrossMissingLinks"/>).
+        /// </summary>
+        /// <returns>False when the step is not traversable at all.</returns>
+        public bool TryGetTraversalLength(int fromNodeId, int toNodeId, bool allowGridAdjacency, out int length)
+        {
+            if (TryGetLink(fromNodeId, toNodeId, out Link link))
+            {
+                length = link.Length;
+                return true;
+            }
+
+            length = 0;
+            if (!allowGridAdjacency)
+            {
+                return false;
+            }
+
+            Node from = GetNode(fromNodeId);
+            Node to = GetNode(toNodeId);
+            if (from == null || to == null)
+            {
+                return false;
+            }
+
+            int distance = Math.Abs(from.X - to.X) + Math.Abs(from.Y - to.Y);
+            if (distance != 1)
+            {
+                return false;
+            }
+
+            length = distance;
+            return true;
+        }
+
+        /// <summary>
+        /// Adds a node the network grew by itself — Story 005 acceptance criterion 3's «чужая
+        /// нода». Identical to <see cref="TryPlaceNode"/> except that it costs nothing, it flags the
+        /// node <see cref="Node.IsAlien"/>, and an occupied preferred cell is not an error: it
+        /// settles into the nearest free cell instead (nearest by Manhattan distance, ties broken by
+        /// ascending column then row, so the outcome is deterministic).
+        /// </summary>
+        /// <param name="preferredX">Authored column (see <see cref="AlienNodeSpawn.X"/>).</param>
+        /// <param name="preferredY">Authored row.</param>
+        /// <param name="type">What the intruder presents itself as. Gateway/Core are refused.</param>
+        /// <param name="node">The created node, or null when the grid has no free cell left.</param>
+        public bool TryCreateAlienNode(int preferredX, int preferredY, NodeType type, out Node node)
+        {
+            node = null;
+
+            if (type == NodeType.Gateway || type == NodeType.Core)
+            {
+                return false;
+            }
+
+            if (!TryFindNearestFreeCell(preferredX, preferredY, out int x, out int y))
+            {
+                return false;
+            }
+
+            node = CreateNodeInternal(x, y, type);
+            node.IsAlien = true;
+            return true;
+        }
+
+        /// <summary>The free cell closest to (<paramref name="preferredX"/>, <paramref name="preferredY"/>), or false when the grid is full.</summary>
+        private bool TryFindNearestFreeCell(int preferredX, int preferredY, out int x, out int y)
+        {
+            x = 0;
+            y = 0;
+            int bestDistance = int.MaxValue;
+            bool found = false;
+
+            for (int cx = 0; cx < Width; cx++)
+            {
+                for (int cy = 0; cy < Height; cy++)
+                {
+                    if (_cells[cx, cy] != null)
+                    {
+                        continue;
+                    }
+
+                    int distance = Math.Abs(cx - preferredX) + Math.Abs(cy - preferredY);
+                    if (distance >= bestDistance)
+                    {
+                        continue;
+                    }
+
+                    bestDistance = distance;
+                    x = cx;
+                    y = cy;
+                    found = true;
+                }
+            }
+
+            return found;
+        }
+
+        /// <summary>
         /// Upgrades a security tool from level 1 to level 2, growing Honeypot capacity by the
         /// level 2 - level 1 delta (already-consumed capacity is preserved). Does not check or
         /// spend credits — see <see cref="NetworkSimulation.TryUpgrade"/>.
@@ -253,7 +359,17 @@ namespace NightShift.Core
         /// ever shows otherwise; not yet profiled since there is no Unity editor in this
         /// environment to profile against.
         /// </remarks>
-        public IReadOnlyList<int> GetActiveNeighbors(int nodeId, float atTime)
+        public IReadOnlyList<int> GetActiveNeighbors(int nodeId, float atTime) =>
+            GetActiveNeighbors(nodeId, atTime, false);
+
+        /// <summary>
+        /// As <see cref="GetActiveNeighbors(int, float)"/>, but when
+        /// <paramref name="includeGridAdjacent"/> is true the result also contains nodes occupying
+        /// orthogonally neighbouring grid cells with no link to this one — Story 005's «аномалия»
+        /// route. Isolation still applies to those phantom steps, so <c>isolate</c> remains an
+        /// answer to an anomaly.
+        /// </summary>
+        public IReadOnlyList<int> GetActiveNeighbors(int nodeId, float atTime, bool includeGridAdjacent)
         {
             if (!_adjacency.TryGetValue(nodeId, out List<int> neighborIds))
             {
@@ -274,7 +390,28 @@ namespace NightShift.Core
                     result.Add(neighborId);
                 }
             }
+
+            if (includeGridAdjacent)
+            {
+                AddGridAdjacentNeighbors(self, atTime, result);
+                result.Sort();
+            }
+
             return result;
+        }
+
+        private void AddGridAdjacentNeighbors(Node self, float atTime, List<int> result)
+        {
+            for (int i = 0; i < GridStepX.Length; i++)
+            {
+                Node neighbor = GetNodeAt(self.X + GridStepX[i], self.Y + GridStepY[i]);
+                if (neighbor == null || neighbor.IsIsolatedAt(atTime) || result.Contains(neighbor.Id))
+                {
+                    continue;
+                }
+
+                result.Add(neighbor.Id);
+            }
         }
 
         /// <summary>Shortest path by hop count from <paramref name="fromNodeId"/> to <paramref name="toNodeId"/> at <paramref name="atTime"/>, or null if none exists.</summary>
@@ -282,7 +419,15 @@ namespace NightShift.Core
         /// Deliberately hop count, not total link length, per Story 001's acceptance criteria:
         /// with variable-length links, a 1-hop 6-cell route beats a 2-hop 2-cell route.
         /// </remarks>
-        public List<int> FindShortestHopPath(int fromNodeId, int toNodeId, float atTime)
+        public List<int> FindShortestHopPath(int fromNodeId, int toNodeId, float atTime) =>
+            FindShortestHopPath(fromNodeId, toNodeId, atTime, false);
+
+        /// <summary>
+        /// As <see cref="FindShortestHopPath(int, int, float)"/>, but when
+        /// <paramref name="allowGridAdjacency"/> is true the search may also step between
+        /// grid-adjacent nodes that are not linked (Story 005's «аномалия»).
+        /// </summary>
+        public List<int> FindShortestHopPath(int fromNodeId, int toNodeId, float atTime, bool allowGridAdjacency)
         {
             if (fromNodeId == toNodeId)
             {
@@ -297,7 +442,7 @@ namespace NightShift.Core
             while (queue.Count > 0)
             {
                 int current = queue.Dequeue();
-                foreach (int neighborId in GetActiveNeighbors(current, atTime))
+                foreach (int neighborId in GetActiveNeighbors(current, atTime, allowGridAdjacency))
                 {
                     if (visited.Contains(neighborId))
                     {
@@ -320,6 +465,10 @@ namespace NightShift.Core
         }
 
         public bool HasPath(int fromNodeId, int toNodeId, float atTime) => FindShortestHopPath(fromNodeId, toNodeId, atTime) != null;
+
+        /// <summary>As <see cref="HasPath(int, int, float)"/>, optionally allowing «аномалия» steps between unlinked grid-adjacent nodes.</summary>
+        public bool HasPath(int fromNodeId, int toNodeId, float atTime, bool allowGridAdjacency) =>
+            FindShortestHopPath(fromNodeId, toNodeId, atTime, allowGridAdjacency) != null;
 
         private static List<int> ReconstructPath(Dictionary<int, int> parent, int fromNodeId, int toNodeId)
         {

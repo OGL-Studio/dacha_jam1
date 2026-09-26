@@ -93,7 +93,25 @@ namespace NightShift.Core
         /// <summary>Cooldown of <c>help</c>. Zero by default: reading the command list is never rationed.</summary>
         public float HelpCooldown = 0f;
 
-        /// <summary>Per-type packet profiles. Story 005 adds entries here for new attack types.</summary>
+        /// <summary>
+        /// Cooldown of <c>shutdown --all</c> (Story 005). Zero: the command exists only in the
+        /// «сеть вне контроля» end state and is meant to work the first time it is typed.
+        /// </summary>
+        public float ShutdownCooldown = 0f;
+
+        // --- Story 005 escalation ---
+
+        /// <summary>
+        /// How many packets an infected Server sends per spawn beat. One keeps the worm a slow
+        /// bleed the player can out-run with <c>patch</c>; raising it makes an unpatched infection
+        /// snowball.
+        /// </summary>
+        public int WormsPerInfectionSpawn = 1;
+
+        /// <summary>
+        /// Per-type packet profiles. Story 005's five attack types are entries here and nothing
+        /// else: the simulation branches on the definition's behaviour flags, never on the enum.
+        /// </summary>
         public Dictionary<PacketType, PacketDefinition> PacketDefinitions = new Dictionary<PacketType, PacketDefinition>
         {
             [PacketType.Standard] = new PacketDefinition
@@ -111,6 +129,66 @@ namespace NightShift.Core
                 MaxHp = 20,
                 CoreDamage = 8,
                 StartsHidden = true,
+            },
+
+            // «скан» — fast and weak. Twice a Standard packet's speed, so it is past an IDS-less
+            // stretch before the player can type anything, but 10 HP dies to any level 1 Firewall.
+            [PacketType.Scan] = new PacketDefinition
+            {
+                Type = PacketType.Scan,
+                SpeedCellsPerSecond = 4f,
+                MaxHp = 10,
+                CoreDamage = 3,
+                StartsHidden = false,
+            },
+
+            // «брутфорс» — tough. 90 HP survives two level 1 Firewalls (2 x 20) and even one
+            // level 2 (40), so the answer is an upgraded pair, a Honeypot, or isolation.
+            [PacketType.BruteForce] = new PacketDefinition
+            {
+                Type = PacketType.BruteForce,
+                SpeedCellsPerSecond = 1.2f,
+                MaxHp = 90,
+                CoreDamage = 18,
+                StartsHidden = false,
+            },
+
+            // «DDoS» — many weak packets aimed at one Server, which they take offline rather than
+            // damaging the Core. The cost of ignoring them is the lost income, not integrity.
+            [PacketType.Ddos] = new PacketDefinition
+            {
+                Type = PacketType.Ddos,
+                SpeedCellsPerSecond = 3f,
+                MaxHp = 8,
+                CoreDamage = 3,
+                StartsHidden = false,
+                DisablesTargetServer = true,
+                ServerDownSeconds = 20f,
+            },
+
+            // «червь» — infects the first healthy Server it reaches; that Server then sends worms
+            // of its own to its neighbours every InfectionSpawnIntervalSeconds until `patch`.
+            [PacketType.Worm] = new PacketDefinition
+            {
+                Type = PacketType.Worm,
+                SpeedCellsPerSecond = 1.5f,
+                MaxHp = 40,
+                CoreDamage = 6,
+                StartsHidden = false,
+                InfectsServer = true,
+                InfectionSpawnIntervalSeconds = 14f,
+            },
+
+            // «аномалия» — hidden like a Stealth packet and able to step between grid-adjacent
+            // cells with no link at all, so a topology that looks airtight is not.
+            [PacketType.Anomaly] = new PacketDefinition
+            {
+                Type = PacketType.Anomaly,
+                SpeedCellsPerSecond = 1.8f,
+                MaxHp = 25,
+                CoreDamage = 12,
+                StartsHidden = true,
+                CanCrossMissingLinks = true,
             },
         };
 

@@ -27,5 +27,12 @@ namespace NightShift.Core
 
         /// <summary>True if Core integrity had already reached 0 when the night ended.</summary>
         public bool CoreDestroyed { get; set; }
+
+        /// <summary>
+        /// True only for the report raised by <c>shutdown --all</c> in the «сеть вне контроля» state —
+        /// the victory ending (Story 005 acceptance criterion 5). The view shows the ending screen
+        /// instead of a shift summary when this is set.
+        /// </summary>
+        public bool Victory { get; set; }
     }
 }

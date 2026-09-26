@@ -56,6 +56,28 @@ namespace NightShift.Core
         /// <summary>Separator between a name prefix and its ordinal.</summary>
         public const string OrdinalSeparator = "-";
 
+        /// <summary>
+        /// Name prefix of the nodes the network grew by itself (Story 005 acceptance criterion 3),
+        /// before the <c>-N</c> ordinal. Deliberately unlike every other prefix: a name the player
+        /// does not recognise is the point.
+        /// </summary>
+        public const string AlienPrefix = "x";
+
+        /// <summary>
+        /// The name prefix used for a specific node: <see cref="AlienPrefix"/> for an intruder,
+        /// otherwise its type's prefix. Ordinals are counted per prefix, so an alien Server and the
+        /// player's own Servers never collide.
+        /// </summary>
+        public static string GetPrefix(Node node)
+        {
+            if (node == null)
+            {
+                throw new ArgumentNullException(nameof(node));
+            }
+
+            return node.IsAlien ? AlienPrefix : GetPrefix(node.Type);
+        }
+
         /// <summary>The name prefix used for a node type. Unique per type, so names never collide across types.</summary>
         public static string GetPrefix(NodeType type)
         {
@@ -92,8 +114,8 @@ namespace NightShift.Core
                 throw new ArgumentNullException(nameof(node));
             }
 
-            string prefix = GetPrefix(node.Type);
-            if (IsSingleton(node.Type))
+            string prefix = GetPrefix(node);
+            if (IsSingleton(node.Type) && !node.IsAlien)
             {
                 return prefix;
             }
@@ -102,7 +124,7 @@ namespace NightShift.Core
             IReadOnlyList<Node> all = graph.AllNodes;
             for (int i = 0; i < all.Count; i++)
             {
-                if (all[i].Type != node.Type)
+                if (GetPrefix(all[i]) != prefix)
                 {
                     continue;
                 }

@@ -32,6 +32,8 @@ namespace NightShift.Core
         private NightData _currentNightData;
         private List<PacketSpawnEvent> _orderedSchedule = new List<PacketSpawnEvent>();
         private int _nextScheduleIndex;
+        private List<AlienNodeSpawn> _orderedAlienSpawns = new List<AlienNodeSpawn>();
+        private int _nextAlienSpawnIndex;
 
         private float _globalRevealUntilTime = float.NegativeInfinity;
         private bool _coreDestroyedFired;
@@ -53,6 +55,28 @@ namespace NightShift.Core
         public float NightElapsedTime { get; private set; }
 
         public bool IsNightActive { get; private set; }
+
+        /// <summary>The night currently loaded, or null before the first <see cref="StartNight"/>. Read-only to callers.</summary>
+        public NightData CurrentNight => _currentNightData;
+
+        /// <summary>
+        /// «сеть вне контроля» — true once the final night's timer has run out (Story 005 acceptance
+        /// criterion 5). The night does not report in this state: packets keep moving and the only
+        /// command the terminal still accepts is <c>shutdown --all</c>.
+        /// </summary>
+        public bool IsOutOfControl { get; private set; }
+
+        /// <summary>True once <see cref="ShutdownAll"/> has succeeded — the victory ending.</summary>
+        public bool IsVictory { get; private set; }
+
+        /// <summary>
+        /// Probability in [0, 1] that a node-targeted terminal command hits the wrong node right
+        /// now, straight off the current <see cref="NightData.CommandMisfireChance"/>. 0 outside a
+        /// night. <see cref="TerminalCommandProcessor"/> reads this rather than holding a number of
+        /// its own (Story 005 acceptance criterion 4).
+        /// </summary>
+        public float CommandMisfireChance =>
+            IsNightActive && _currentNightData != null ? _currentNightData.CommandMisfireChance : 0f;
 
         public float Credits { get; private set; }
 
@@ -80,6 +104,24 @@ namespace NightShift.Core
 
         /// <summary>Raised whenever the credit balance changes (build spend or server income).</summary>
         public event Action<float> OnCreditsChanged;
+
+        /// <summary>Raised when a «DDoS» packet takes a Server offline: (server, seconds of downtime).</summary>
+        public event Action<Node, float> OnServerDowned;
+
+        /// <summary>Raised when a node that was offline comes back by itself, its downtime having expired.</summary>
+        public event Action<Node> OnServerRecovered;
+
+        /// <summary>Raised when a «червь» infects a Server. The Server starts spawning worms of its own until <c>patch</c>.</summary>
+        public event Action<Node> OnServerInfected;
+
+        /// <summary>Raised when an intruder node appears in the network by itself, already linked in (Story 005 acceptance criterion 3).</summary>
+        public event Action<Node> OnAlienNodeAppeared;
+
+        /// <summary>Raised once, when the final night's timer expires and <see cref="IsOutOfControl"/> becomes true.</summary>
+        public event Action OnOutOfControl;
+
+        /// <summary>Raised once, when <c>shutdown --all</c> succeeds. Fires before the final <see cref="OnNightEnded"/>.</summary>
+        public event Action OnVictory;
 
         public NetworkSimulation(GameData data, IRandomSource random, float startingCredits = 0f)
         {
@@ -254,18 +296,35 @@ namespace NightShift.Core
         // Night lifecycle
         // ------------------------------------------------------------------
 
-        /// <summary>Begins a night: resets the per-night clock, schedule cursor, and report counters, and clears any leftover packets from a previous night.</summary>
+        /// <summary>
+        /// Begins a night: expands <see cref="NightData.Waves"/> into the spawn schedule, queues the
+        /// night's alien intrusions, resets the per-night clock, cursors and report counters, clears
+        /// any leftover packets, and repairs whatever the previous night broke (worm infections and
+        /// «DDoS» downtime — the day shift is assumed to have cleaned up).
+        /// </summary>
+        /// <remarks>
+        /// Wave jitter is drawn here, from the injected <see cref="IRandomSource"/>, so the whole
+        /// night's timing is fixed the moment the night starts and is reproducible for a given seed.
+        /// </remarks>
         public void StartNight(NightData nightData)
         {
             _currentNightData = nightData ?? throw new ArgumentNullException(nameof(nightData));
 
             _orderedSchedule = new List<PacketSpawnEvent>(nightData.SpawnSchedule);
+            AppendWaveSpawns(nightData, _orderedSchedule);
             _orderedSchedule.Sort((a, b) => a.SpawnTime.CompareTo(b.SpawnTime));
             _nextScheduleIndex = 0;
 
+            _orderedAlienSpawns = new List<AlienNodeSpawn>(nightData.AlienNodes);
+            _orderedAlienSpawns.Sort((a, b) => a.SpawnTime.CompareTo(b.SpawnTime));
+            _nextAlienSpawnIndex = 0;
+
             NightElapsedTime = 0f;
             IsNightActive = true;
+            IsOutOfControl = false;
+            IsVictory = false;
             _coreDestroyedFired = false;
+            ClearNodeAfflictions();
 
             _nightCreditsEarned = 0f;
             _nightBlockedCount = 0;
@@ -302,7 +361,10 @@ namespace NightShift.Core
 
             NightElapsedTime += deltaTime;
 
+            UpdateNodeRecovery();
             SpawnScheduledPackets();
+            SpawnScheduledAlienNodes();
+            SpawnInfectionPackets();
             UpdateServerIncome(deltaTime);
 
             for (int i = _activePackets.Count - 1; i >= 0; i--)
@@ -326,22 +388,46 @@ namespace NightShift.Core
                 return;
             }
 
-            if (NightElapsedTime >= _currentNightData.NightDuration)
+            if (NightElapsedTime >= _currentNightData.NightDuration && !IsOutOfControl)
             {
-                EndNight();
+                if (_currentNightData.EndsOutOfControl)
+                {
+                    EnterOutOfControl();
+                }
+                else
+                {
+                    EndNight();
+                }
             }
         }
 
-        /// <summary>Spawns a packet of <paramref name="type"/> at the Gateway right now (bypassing the schedule). Useful for scripted/manual spawns and tests.</summary>
+        /// <summary>Spawns a packet of <paramref name="type"/> at the Gateway right now, heading for the Core (bypassing the schedule). Useful for scripted/manual spawns and tests.</summary>
         /// <remarks>
         /// The returned packet may already have <see cref="Packet.IsDestroyed"/> set to true if it
         /// dissipated (no path to Core) immediately on arrival at the Gateway.
         /// </remarks>
-        public Packet SpawnPacket(PacketType type)
+        public Packet SpawnPacket(PacketType type) => SpawnPacket(type, WaveTargetKind.Core);
+
+        /// <summary>
+        /// Spawns a packet of <paramref name="type"/> at the Gateway aimed at
+        /// <paramref name="target"/> — the Core, or a Server picked through the seeded
+        /// <see cref="IRandomSource"/> for a «DDoS» wave.
+        /// </summary>
+        public Packet SpawnPacket(PacketType type, WaveTargetKind target) =>
+            SpawnPacketAt(type, Graph.GatewayNode.Id, ResolveDestinationNodeId(target));
+
+        /// <summary>
+        /// Spawns a packet at an arbitrary node with an arbitrary destination and runs the arrival
+        /// pipeline for its starting node. The general form behind <see cref="SpawnPacket(PacketType)"/>.
+        /// </summary>
+        /// <param name="type">Attack profile to spawn.</param>
+        /// <param name="startNodeId">Node the packet appears at.</param>
+        /// <param name="destinationNodeId">Node it travels towards. Re-targeted to the Core if it becomes unreachable.</param>
+        public Packet SpawnPacketAt(PacketType type, int startNodeId, int destinationNodeId)
         {
             PacketDefinition definition = Data.GetPacketDefinition(type);
             _nextPacketId++;
-            var packet = new Packet(_nextPacketId, type, definition, Graph.GatewayNode.Id);
+            var packet = new Packet(_nextPacketId, type, definition, startNodeId, destinationNodeId);
 
             bool alive = RunArrivalPipeline(packet);
             if (alive)
@@ -349,6 +435,107 @@ namespace NightShift.Core
                 _activePackets.Add(packet);
             }
             return packet;
+        }
+
+        /// <summary>
+        /// Makes an intruder node appear now, linked into the existing network — the manual form of
+        /// a <see cref="NightData.AlienNodes"/> entry (Story 005 acceptance criterion 3).
+        /// </summary>
+        /// <returns>The node, or null when the grid had no free cell.</returns>
+        public Node SpawnAlienNode(AlienNodeSpawn spawn)
+        {
+            if (spawn == null)
+            {
+                throw new ArgumentNullException(nameof(spawn));
+            }
+
+            if (!Graph.TryCreateAlienNode(spawn.X, spawn.Y, spawn.Type, out Node node))
+            {
+                return null;
+            }
+
+            LinkAlienNode(node, spawn.LinkCount);
+            OnAlienNodeAppeared?.Invoke(node);
+            return node;
+        }
+
+        /// <summary>
+        /// The <c>shutdown --all</c> ending: only legal once <see cref="IsOutOfControl"/> is true.
+        /// Kills every packet in flight, ends the night, and reports a victory
+        /// (<see cref="NightReport.Victory"/>).
+        /// </summary>
+        /// <returns>False — changing nothing — when the network is not out of control yet.</returns>
+        public bool ShutdownAll()
+        {
+            if (!IsOutOfControl || IsVictory)
+            {
+                return false;
+            }
+
+            IsVictory = true;
+
+            foreach (Packet packet in _activePackets)
+            {
+                packet.IsDestroyed = true;
+            }
+            _activePackets.Clear();
+
+            OnVictory?.Invoke();
+            EndNight();
+            return true;
+        }
+
+        /// <summary>
+        /// Picks the node a misfiring command hits instead of the one the player named — Story 005
+        /// acceptance criterion 4. Rolls <see cref="CommandMisfireChance"/> on the seeded
+        /// <see cref="IRandomSource"/>, so the same seed and the same typed commands always misfire
+        /// in the same places.
+        /// </summary>
+        /// <param name="intended">The node the player actually named.</param>
+        /// <param name="mustBeIsolatable">
+        /// True for <c>isolate</c>: excludes the Gateway and the Core, which cannot be isolated, so a
+        /// misfire always still does something rather than silently failing.
+        /// </param>
+        /// <param name="actual">The node to act on: a different one on a misfire, <paramref name="intended"/> otherwise.</param>
+        /// <returns>True when the command misfired.</returns>
+        public bool TryMisfireTarget(Node intended, bool mustBeIsolatable, out Node actual)
+        {
+            actual = intended;
+
+            if (intended == null)
+            {
+                return false;
+            }
+
+            float chance = CommandMisfireChance;
+            if (chance <= 0f || Random.NextDouble() >= chance)
+            {
+                return false;
+            }
+
+            var candidates = new List<Node>();
+            foreach (Node node in Graph.AllNodes)
+            {
+                if (node.Id == intended.Id)
+                {
+                    continue;
+                }
+
+                if (mustBeIsolatable && (node.Id == Graph.GatewayNode.Id || node.Id == Graph.CoreNode.Id))
+                {
+                    continue;
+                }
+
+                candidates.Add(node);
+            }
+
+            if (candidates.Count == 0)
+            {
+                return false;
+            }
+
+            actual = candidates[Random.NextInt(0, candidates.Count)];
+            return true;
         }
 
         /// <summary>True if a Firewall could currently detect this packet (either never hidden, or revealed — individually or via a temporary global <see cref="Reveal"/>).</summary>
@@ -389,7 +576,12 @@ namespace NightShift.Core
             _globalRevealUntilTime = SimulationTime + duration;
         }
 
-        /// <summary>Brings a node back online and clears any active isolation on it (the terminal `patch` command).</summary>
+        /// <summary>
+        /// Brings a node back online and clears everything wrong with it: active isolation, «DDoS»
+        /// downtime, and any «червь» infection (the terminal <c>patch</c> command). Clearing the
+        /// infection is what stops an infected Server spawning further worms — Story 005 acceptance
+        /// criterion 2's «до patch».
+        /// </summary>
         public bool Patch(int nodeId)
         {
             Node node = Graph.GetNode(nodeId);
@@ -400,12 +592,99 @@ namespace NightShift.Core
 
             node.IsOnline = true;
             node.IsolatedUntilTime = float.NegativeInfinity;
+            node.DownedUntilTime = float.NegativeInfinity;
+            node.IsInfected = false;
+            node.InfectionNextSpawnTime = float.NegativeInfinity;
             return true;
         }
 
         // ------------------------------------------------------------------
         // Internal simulation step helpers
         // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Turns each <see cref="NightWave"/> into <see cref="PacketSpawnEvent"/>s at
+        /// <c>StartTime + i * IntervalSeconds</c>, jittered through the seeded
+        /// <see cref="IRandomSource"/> and clamped into the night.
+        /// </summary>
+        private void AppendWaveSpawns(NightData nightData, List<PacketSpawnEvent> into)
+        {
+            foreach (NightWave wave in nightData.Waves)
+            {
+                if (wave == null || wave.Count <= 0)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < wave.Count; i++)
+                {
+                    float spawnTime = wave.StartTime + i * wave.IntervalSeconds;
+
+                    if (wave.JitterSeconds > 0f)
+                    {
+                        spawnTime += (float)(Random.NextDouble() * 2d - 1d) * wave.JitterSeconds;
+                    }
+
+                    if (spawnTime < 0f)
+                    {
+                        spawnTime = 0f;
+                    }
+                    else if (spawnTime > nightData.NightDuration)
+                    {
+                        spawnTime = nightData.NightDuration;
+                    }
+
+                    into.Add(new PacketSpawnEvent
+                    {
+                        SpawnTime = spawnTime,
+                        Type = wave.Type,
+                        Target = wave.Target,
+                    });
+                }
+            }
+        }
+
+        /// <summary>
+        /// The concrete node a wave's «цель» resolves to right now: the Core, or one Server chosen
+        /// through the seeded <see cref="IRandomSource"/>. The player's own online Servers are
+        /// preferred; alien or downed Servers are used only if there is nothing else, and the Core is
+        /// the last resort when the network has no Server at all.
+        /// </summary>
+        private int ResolveDestinationNodeId(WaveTargetKind target)
+        {
+            if (target != WaveTargetKind.Server)
+            {
+                return Graph.CoreNode.Id;
+            }
+
+            var preferred = new List<Node>();
+            var fallback = new List<Node>();
+
+            foreach (Node node in Graph.AllNodes)
+            {
+                if (node.Type != NodeType.Server)
+                {
+                    continue;
+                }
+
+                if (!node.IsAlien && node.IsOnline)
+                {
+                    preferred.Add(node);
+                }
+                else
+                {
+                    fallback.Add(node);
+                }
+            }
+
+            List<Node> pool = preferred.Count > 0 ? preferred : fallback;
+            if (pool.Count == 0)
+            {
+                return Graph.CoreNode.Id;
+            }
+
+            return pool[Random.NextInt(0, pool.Count)].Id;
+        }
 
         private void SpawnScheduledPackets()
         {
@@ -414,7 +693,177 @@ namespace NightShift.Core
             {
                 PacketSpawnEvent scheduled = _orderedSchedule[_nextScheduleIndex];
                 _nextScheduleIndex++;
-                SpawnPacket(scheduled.Type);
+                SpawnPacket(scheduled.Type, scheduled.Target);
+            }
+        }
+
+        private void SpawnScheduledAlienNodes()
+        {
+            while (_nextAlienSpawnIndex < _orderedAlienSpawns.Count &&
+                   _orderedAlienSpawns[_nextAlienSpawnIndex].SpawnTime <= NightElapsedTime)
+            {
+                AlienNodeSpawn spawn = _orderedAlienSpawns[_nextAlienSpawnIndex];
+                _nextAlienSpawnIndex++;
+                SpawnAlienNode(spawn);
+            }
+        }
+
+        /// <summary>
+        /// Links a freshly appeared alien node into its nearest existing neighbours — nearest by
+        /// Manhattan distance, ties broken by ascending node id, so the topology it creates is
+        /// deterministic. The links are free: the network built them, not the player.
+        /// </summary>
+        private void LinkAlienNode(Node alien, int linkCount)
+        {
+            int wanted = linkCount > 0 ? linkCount : 1;
+
+            var candidates = new List<Node>();
+            foreach (Node other in Graph.AllNodes)
+            {
+                if (other.Id == alien.Id)
+                {
+                    continue;
+                }
+
+                if (!Graph.CanAddLink(alien.Id, other.Id, out _, out _))
+                {
+                    continue;
+                }
+
+                candidates.Add(other);
+            }
+
+            candidates.Sort((a, b) =>
+            {
+                int distanceA = ManhattanDistance(alien, a);
+                int distanceB = ManhattanDistance(alien, b);
+                return distanceA != distanceB ? distanceA.CompareTo(distanceB) : a.Id.CompareTo(b.Id);
+            });
+
+            int linked = 0;
+            for (int i = 0; i < candidates.Count && linked < wanted; i++)
+            {
+                if (Graph.TryAddLink(alien.Id, candidates[i].Id, out _, out _))
+                {
+                    linked++;
+                }
+            }
+        }
+
+        private static int ManhattanDistance(Node a, Node b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
+
+        /// <summary>
+        /// Emits the next batch of worms from every infected Server. Keeps emitting while the node's
+        /// next-spawn time is in the past, so a large <see cref="Tick"/> delta catches up instead of
+        /// swallowing beats.
+        /// </summary>
+        private void SpawnInfectionPackets()
+        {
+            IReadOnlyList<Node> nodes = Graph.AllNodes;
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                Node node = nodes[i];
+                if (!node.IsInfected)
+                {
+                    continue;
+                }
+
+                PacketDefinition definition = Data.GetPacketDefinition(node.InfectionPacketType);
+                float interval = definition.InfectionSpawnIntervalSeconds;
+                if (interval <= 0f)
+                {
+                    continue; // Guards against an endless catch-up loop on misconfigured data.
+                }
+
+                int beatBudget = 16;
+                while (node.IsInfected && SimulationTime >= node.InfectionNextSpawnTime && beatBudget-- > 0)
+                {
+                    for (int spawn = 0; spawn < Data.WormsPerInfectionSpawn; spawn++)
+                    {
+                        SpawnInfectionPacketFrom(node, definition);
+                    }
+
+                    node.InfectionNextSpawnTime += interval;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Sends one worm from an infected node towards a neighbour of its own — an uninfected
+        /// Server neighbour if there is one, otherwise any reachable neighbour, chosen through the
+        /// seeded <see cref="IRandomSource"/>. The packet does not run the arrival pipeline at its
+        /// source: it is leaving that node, not arriving at it.
+        /// </summary>
+        private Packet SpawnInfectionPacketFrom(Node source, PacketDefinition definition)
+        {
+            IReadOnlyList<int> neighborIds =
+                Graph.GetActiveNeighbors(source.Id, SimulationTime, definition.CanCrossMissingLinks);
+            if (neighborIds.Count == 0)
+            {
+                return null;
+            }
+
+            var preferred = new List<int>();
+            foreach (int neighborId in neighborIds)
+            {
+                Node neighbor = Graph.GetNode(neighborId);
+                if (neighbor.Type == NodeType.Server && !neighbor.IsInfected)
+                {
+                    preferred.Add(neighborId);
+                }
+            }
+
+            IReadOnlyList<int> pool = preferred.Count > 0 ? preferred : neighborIds;
+            int firstHopId = pool[Random.NextInt(0, pool.Count)];
+
+            _nextPacketId++;
+            var packet = new Packet(_nextPacketId, definition.Type, definition, source.Id, Graph.CoreNode.Id)
+            {
+                TargetNodeId = firstHopId,
+            };
+
+            _activePackets.Add(packet);
+            return packet;
+        }
+
+        /// <summary>Brings nodes whose «DDoS» downtime has expired back online.</summary>
+        private void UpdateNodeRecovery()
+        {
+            IReadOnlyList<Node> nodes = Graph.AllNodes;
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                Node node = nodes[i];
+                if (float.IsNegativeInfinity(node.DownedUntilTime) || node.IsDownedAt(SimulationTime))
+                {
+                    continue;
+                }
+
+                node.DownedUntilTime = float.NegativeInfinity;
+                if (!node.IsOnline)
+                {
+                    node.IsOnline = true;
+                    OnServerRecovered?.Invoke(node);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Clears worm infections and «DDoS» downtime at the start of a night: the day shift is
+        /// assumed to have repaired the hardware, so escalation comes from the night's own data
+        /// rather than from accumulated rot the player can no longer reach.
+        /// </summary>
+        private void ClearNodeAfflictions()
+        {
+            foreach (Node node in Graph.AllNodes)
+            {
+                node.IsInfected = false;
+                node.InfectionNextSpawnTime = float.NegativeInfinity;
+
+                if (!float.IsNegativeInfinity(node.DownedUntilTime))
+                {
+                    node.DownedUntilTime = float.NegativeInfinity;
+                    node.IsOnline = true;
+                }
             }
         }
 
@@ -423,7 +872,7 @@ namespace NightShift.Core
             bool anyIncome = false;
             foreach (Node node in Graph.AllNodes)
             {
-                if (node.Type != NodeType.Server || !node.IsOnline)
+                if (node.Type != NodeType.Server || !node.IsOnline || node.IsAlien)
                 {
                     continue;
                 }
@@ -458,13 +907,14 @@ namespace NightShift.Core
 
                 // Speed is in cells/second, so crossing a link of length L takes L / speed seconds.
                 // LinkProgress stays a 0..1 fraction of the link regardless of its length.
-                if (!Graph.TryGetLink(packet.CurrentNodeId, packet.TargetNodeId, out Link link))
+                if (!Graph.TryGetTraversalLength(
+                        packet.CurrentNodeId, packet.TargetNodeId, packet.CanCrossMissingLinks, out int traversalLength))
                 {
                     throw new InvalidOperationException(
                         $"Packet {packet.Id} is travelling between nodes {packet.CurrentNodeId} and {packet.TargetNodeId}, which are not linked.");
                 }
 
-                float linkLength = link.Length;
+                float linkLength = traversalLength;
                 float cellsToTarget = (1f - packet.LinkProgress) * linkLength;
                 float timeToArrive = cellsToTarget / effectiveSpeed;
 
@@ -516,7 +966,8 @@ namespace NightShift.Core
         private bool RunArrivalPipeline(Packet packet)
         {
             Node node = Graph.GetNode(packet.CurrentNodeId);
-            IReadOnlyList<int> neighborIds = Graph.GetActiveNeighbors(node.Id, SimulationTime);
+            IReadOnlyList<int> neighborIds =
+                Graph.GetActiveNeighbors(node.Id, SimulationTime, packet.CanCrossMissingLinks);
 
             // 1. IDS reveal — applies at the IDS's own node AND at nodes directly linked to it.
             if (packet.RawStartsHidden && !packet.IndividuallyRevealed)
@@ -552,7 +1003,17 @@ namespace NightShift.Core
                 return false;
             }
 
-            // 4. Core.
+            // 4. «червь» — the first healthy Server it reaches becomes a spawn source until `patch`.
+            if (packet.InfectsServer && node.Type == NodeType.Server && !node.IsInfected)
+            {
+                InfectNode(node, packet);
+                packet.IsDestroyed = true;
+                _nightLeakedCount++;
+                OnPacketLeaked?.Invoke(packet);
+                return false;
+            }
+
+            // 5. Core — always damages, whatever the packet was nominally aimed at.
             if (node.Id == Graph.CoreNode.Id)
             {
                 ApplyCoreDamage(packet);
@@ -562,8 +1023,32 @@ namespace NightShift.Core
                 return false;
             }
 
-            // 5. Recompute shortest-hop path to Core from here.
-            List<int> path = Graph.FindShortestHopPath(node.Id, Graph.CoreNode.Id, SimulationTime);
+            // 6. «DDoS» — arriving at the Server it was aimed at takes that Server down.
+            if (node.Id == packet.DestinationNodeId)
+            {
+                if (packet.DisablesTargetServer && node.Type == NodeType.Server)
+                {
+                    DownNode(node, packet);
+                }
+
+                packet.IsDestroyed = true;
+                _nightLeakedCount++;
+                OnPacketLeaked?.Invoke(packet);
+                return false;
+            }
+
+            // 7. Recompute shortest-hop path to the destination from here, falling back to the Core
+            //    when the destination Server has become unreachable (isolated, or its links cut).
+            List<int> path = Graph.FindShortestHopPath(
+                node.Id, packet.DestinationNodeId, SimulationTime, packet.CanCrossMissingLinks);
+
+            if (path == null && packet.DestinationNodeId != Graph.CoreNode.Id)
+            {
+                packet.DestinationNodeId = Graph.CoreNode.Id;
+                path = Graph.FindShortestHopPath(
+                    node.Id, packet.DestinationNodeId, SimulationTime, packet.CanCrossMissingLinks);
+            }
+
             if (path == null || path.Count < 2)
             {
                 packet.IsDestroyed = true;
@@ -613,6 +1098,31 @@ namespace NightShift.Core
         private static bool IsActiveHoneypot(Node node) =>
             node.Type == NodeType.Honeypot && node.IsOnline && node.HoneypotCapacityRemaining > 0;
 
+        /// <summary>Marks a Server as a «червь» spawn source, using the arriving packet's own profile for the spawn beat.</summary>
+        private void InfectNode(Node node, Packet packet)
+        {
+            PacketDefinition definition = Data.GetPacketDefinition(packet.Type);
+            node.IsInfected = true;
+            node.InfectionPacketType = packet.Type;
+            node.InfectionNextSpawnTime = SimulationTime + definition.InfectionSpawnIntervalSeconds;
+            OnServerInfected?.Invoke(node);
+        }
+
+        /// <summary>Takes a Server offline for the arriving «DDoS» packet's <see cref="PacketDefinition.ServerDownSeconds"/>.</summary>
+        private void DownNode(Node node, Packet packet)
+        {
+            PacketDefinition definition = Data.GetPacketDefinition(packet.Type);
+            node.IsOnline = false;
+            node.DownedUntilTime = SimulationTime + definition.ServerDownSeconds;
+            OnServerDowned?.Invoke(node, definition.ServerDownSeconds);
+        }
+
+        private void EnterOutOfControl()
+        {
+            IsOutOfControl = true;
+            OnOutOfControl?.Invoke();
+        }
+
         private void ApplyCoreDamage(Packet packet)
         {
             CoreIntegrity = Math.Max(0, CoreIntegrity - packet.CoreDamage);
@@ -634,6 +1144,7 @@ namespace NightShift.Core
                 CoreDamageTaken = _nightDamageTaken,
                 RemainingCoreIntegrity = CoreIntegrity,
                 CoreDestroyed = CoreIntegrity <= 0,
+                Victory = IsVictory,
             };
 
             OnNightEnded?.Invoke(report);

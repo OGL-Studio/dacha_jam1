@@ -135,6 +135,22 @@ namespace NightShift.Game
         public const string TerminalPatchRefusedFormat = "{0} восстановить не удалось.";
         public const string TerminalInternalErrorFormat = "Сбой терминала: {0}";
 
+        // --- Story 005: misfires, the out-of-control end state, shutdown --all ---
+
+        public const string CommandDescriptionShutdown = "вырубить всю сеть — конец смены";
+
+        /// <summary>
+        /// Prefix printed before a successful command that landed on the wrong node (Story 005
+        /// acceptance criterion 4: «об этом пишется в лог»). Arguments: intended node, node actually
+        /// hit.
+        /// </summary>
+        public const string TerminalMisfireFormat = "СБОЙ: команда ушла не туда — вместо {0} сработало на {1}. ";
+
+        public const string TerminalLockedOutOfControlFormat = "{0} больше не отвечает. Сеть вне контроля — осталась только «shutdown --all».";
+        public const string TerminalShutdownUnavailable = "Вырубать пока нечего: сеть ещё под контролем.";
+        public const string TerminalInvalidArgumentFormat = "Так нельзя. Формат: {0}";
+        public const string TerminalShutdownApplied = "Сеть выключена. Смена закончена.";
+
         /// <summary>Russian description of a terminal command, keyed by its command word.</summary>
         public static string GetCommandDescription(string commandName)
         {
@@ -144,6 +160,7 @@ namespace NightShift.Game
                 case TerminalCommandProcessor.IsolateCommand: return CommandDescriptionIsolate;
                 case TerminalCommandProcessor.ScanCommand: return CommandDescriptionScan;
                 case TerminalCommandProcessor.PatchCommand: return CommandDescriptionPatch;
+                case TerminalCommandProcessor.ShutdownCommand: return CommandDescriptionShutdown;
                 default: return CommandDescriptionUnknown;
             }
         }
@@ -174,6 +191,12 @@ namespace NightShift.Game
 
             string usageLine = string.IsNullOrEmpty(usage) ? result.CommandName : usage;
 
+            // Story 005 criterion 4: a misfire is the same sentence as the success it really was,
+            // preceded by the admission that it hit the wrong node.
+            string misfirePrefix = result.Misfired
+                ? string.Format(TerminalMisfireFormat, result.IntendedNodeName, result.NodeName)
+                : string.Empty;
+
             switch (result.Code)
             {
                 case TerminalResultCode.UnknownCommand:
@@ -187,17 +210,25 @@ namespace NightShift.Game
                 case TerminalResultCode.OnCooldown:
                     return string.Format(TerminalCooldownFormat, result.CommandName, result.Seconds);
                 case TerminalResultCode.IsolateApplied:
-                    return string.Format(TerminalIsolateAppliedFormat, result.NodeName, result.Seconds);
+                    return misfirePrefix + string.Format(TerminalIsolateAppliedFormat, result.NodeName, result.Seconds);
                 case TerminalResultCode.IsolateRefused:
                     return string.Format(TerminalIsolateRefusedFormat, result.NodeName);
                 case TerminalResultCode.ScanApplied:
                     return string.Format(TerminalScanAppliedFormat, result.Seconds);
                 case TerminalResultCode.PatchApplied:
-                    return string.Format(TerminalPatchAppliedFormat, result.NodeName);
+                    return misfirePrefix + string.Format(TerminalPatchAppliedFormat, result.NodeName);
                 case TerminalResultCode.PatchRefused:
                     return string.Format(TerminalPatchRefusedFormat, result.NodeName);
                 case TerminalResultCode.InternalError:
                     return string.Format(TerminalInternalErrorFormat, result.Diagnostic);
+                case TerminalResultCode.CommandLockedOutOfControl:
+                    return string.Format(TerminalLockedOutOfControlFormat, result.CommandName);
+                case TerminalResultCode.ShutdownUnavailable:
+                    return TerminalShutdownUnavailable;
+                case TerminalResultCode.InvalidArgument:
+                    return string.Format(TerminalInvalidArgumentFormat, usageLine);
+                case TerminalResultCode.ShutdownApplied:
+                    return TerminalShutdownApplied;
                 default:
                     return null;
             }

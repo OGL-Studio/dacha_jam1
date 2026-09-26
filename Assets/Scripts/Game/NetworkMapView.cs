@@ -92,6 +92,7 @@ namespace NightShift.Game
             _simulation.OnPacketBlocked += HandlePacketBlocked;
             _simulation.OnPacketLeaked += HandlePacketLeaked;
             _simulation.OnPacketDissipated += HandlePacketDissipated;
+            _simulation.OnAlienNodeAppeared += HandleAlienNodeAppeared;
 
             _initialized = true;
         }
@@ -248,6 +249,17 @@ namespace NightShift.Game
             _simulation.OnPacketBlocked -= HandlePacketBlocked;
             _simulation.OnPacketLeaked -= HandlePacketLeaked;
             _simulation.OnPacketDissipated -= HandlePacketDissipated;
+            _simulation.OnAlienNodeAppeared -= HandleAlienNodeAppeared;
+        }
+
+        /// <summary>
+        /// Redraws the map when the network grows a node of its own mid-night (Story 005 acceptance
+        /// criterion 3). The whole topology is rebuilt rather than patched: it happens a handful of
+        /// times per campaign, and a full rebuild cannot drift out of step with the graph.
+        /// </summary>
+        private void HandleAlienNodeAppeared(Node node)
+        {
+            RebuildTopology();
         }
 
         // ------------------------------------------------------------------

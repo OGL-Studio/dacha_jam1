@@ -55,6 +55,12 @@ namespace NightShift.Core
         /// <summary>The <c>patch</c> command word.</summary>
         public const string PatchCommand = "patch";
 
+        /// <summary>The <c>shutdown</c> command word (Story 005). Only ever legal as <c>shutdown --all</c>.</summary>
+        public const string ShutdownCommand = "shutdown";
+
+        /// <summary>The one argument <see cref="ShutdownCommand"/> accepts.</summary>
+        public const string ShutdownAllArgument = "--all";
+
         private static readonly char[] TokenSeparators = { ' ', '\t' };
 
         private readonly NetworkSimulation _simulation;
@@ -65,8 +71,29 @@ namespace NightShift.Core
         private readonly Dictionary<string, float> _readyAtTime =
             new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>The command table, in the order <c>help</c> lists it.</summary>
+        /// <summary>The full command table, including commands not currently available.</summary>
         public IReadOnlyList<TerminalCommandInfo> Commands => _commands;
+
+        /// <summary>
+        /// The commands the player may use right now, in <c>help</c>'s order. Story 005 acceptance
+        /// criterion 5: <c>shutdown --all</c> is absent until the network goes out of control, and
+        /// from that moment on it is the only thing left besides <c>help</c>.
+        /// </summary>
+        public IReadOnlyList<TerminalCommandInfo> AvailableCommands
+        {
+            get
+            {
+                var available = new List<TerminalCommandInfo>(_commands.Count);
+                foreach (TerminalCommandInfo info in _commands)
+                {
+                    if (IsAvailable(info))
+                    {
+                        available.Add(info);
+                    }
+                }
+                return available;
+            }
+        }
 
         /// <summary>
         /// Binds the processor to a simulation and builds the command table from
@@ -82,6 +109,32 @@ namespace NightShift.Core
             Register(new TerminalCommandInfo(IsolateCommand, 1, IsolateCommand + " <node>", _data.IsolateCooldown));
             Register(new TerminalCommandInfo(ScanCommand, 0, ScanCommand, _data.ScanCooldown));
             Register(new TerminalCommandInfo(PatchCommand, 1, PatchCommand + " <node>", _data.PatchCooldown));
+            Register(new TerminalCommandInfo(
+                ShutdownCommand,
+                1,
+                ShutdownCommand + " " + ShutdownAllArgument,
+                _data.ShutdownCooldown,
+                availableOnlyOutOfControl: true));
+        }
+
+        /// <summary>
+        /// Whether a command is usable in the simulation's current state. <c>help</c> stays available
+        /// in the out-of-control end state on purpose: the one command still left has to be
+        /// discoverable, and listing it changes nothing in the simulation.
+        /// </summary>
+        public bool IsAvailable(TerminalCommandInfo info)
+        {
+            if (info == null)
+            {
+                return false;
+            }
+
+            if (info.AvailableOnlyOutOfControl)
+            {
+                return _simulation.IsOutOfControl;
+            }
+
+            return !_simulation.IsOutOfControl || info.Name == HelpCommand;
         }
 
         /// <summary>Metadata for a command word, or null if no such command exists. Case-insensitive.</summary>
@@ -147,6 +200,19 @@ namespace NightShift.Core
                     "Unknown command '" + commandName + "'.");
             }
 
+            // Story 005 criterion 5: availability is decided before anything else, so a command that
+            // does not exist in this state cannot spend a cooldown or touch the simulation.
+            if (!IsAvailable(info))
+            {
+                TerminalResultCode code = info.AvailableOnlyOutOfControl
+                    ? TerminalResultCode.ShutdownUnavailable
+                    : TerminalResultCode.CommandLockedOutOfControl;
+
+                return TerminalCommandResult.Rejected(
+                    code, info.Name, string.Empty, string.Empty, 0f,
+                    "'" + info.Name + "' is not available in the current state.");
+            }
+
             int suppliedArguments = tokens.Length - 1;
             if (suppliedArguments < info.ArgumentCount)
             {
@@ -178,13 +244,15 @@ namespace NightShift.Core
             switch (info.Name)
             {
                 case HelpCommand:
-                    return StartCooldown(info, TerminalCommandResult.HelpListing(info.Name, _commands));
+                    return StartCooldown(info, TerminalCommandResult.HelpListing(info.Name, AvailableCommands));
                 case ScanCommand:
                     return ExecuteScan(info);
                 case IsolateCommand:
                     return ExecuteIsolate(info, argument);
                 case PatchCommand:
                     return ExecutePatch(info, argument);
+                case ShutdownCommand:
+                    return ExecuteShutdown(info, argument);
                 default:
                     // Unreachable while every registered command is handled above; kept so that
                     // adding a table entry without a case degrades into a clear error, not a crash.
@@ -204,10 +272,14 @@ namespace NightShift.Core
 
         private TerminalCommandResult ExecuteIsolate(TerminalCommandInfo info, string argument)
         {
-            if (!NodeNaming.TryResolve(_simulation.Graph, argument, out Node node))
+            if (!NodeNaming.TryResolve(_simulation.Graph, argument, out Node intended))
             {
                 return UnknownNode(info, argument);
             }
+
+            // Story 005 criterion 4: on the late nights the command may land on another node. The
+            // roll is the simulation's (seeded) business; the processor only reports what it hit.
+            bool misfired = _simulation.TryMisfireTarget(intended, mustBeIsolatable: true, out Node node);
 
             string canonical = NodeNaming.GetName(_simulation.Graph, node);
             float duration = _data.IsolateDuration;
@@ -219,16 +291,18 @@ namespace NightShift.Core
                     "'" + canonical + "' cannot be isolated.");
             }
 
-            return StartCooldown(info, TerminalCommandResult.Applied(
-                TerminalResultCode.IsolateApplied, info.Name, argument, canonical, duration));
+            return StartCooldown(info, BuildApplied(
+                TerminalResultCode.IsolateApplied, info, argument, canonical, duration, misfired, intended));
         }
 
         private TerminalCommandResult ExecutePatch(TerminalCommandInfo info, string argument)
         {
-            if (!NodeNaming.TryResolve(_simulation.Graph, argument, out Node node))
+            if (!NodeNaming.TryResolve(_simulation.Graph, argument, out Node intended))
             {
                 return UnknownNode(info, argument);
             }
+
+            bool misfired = _simulation.TryMisfireTarget(intended, mustBeIsolatable: false, out Node node);
 
             string canonical = NodeNaming.GetName(_simulation.Graph, node);
 
@@ -239,8 +313,56 @@ namespace NightShift.Core
                     "'" + canonical + "' could not be patched.");
             }
 
+            return StartCooldown(info, BuildApplied(
+                TerminalResultCode.PatchApplied, info, argument, canonical, 0f, misfired, intended));
+        }
+
+        /// <summary>
+        /// The <c>shutdown --all</c> ending (Story 005 criterion 5). Availability was already checked
+        /// in <see cref="ExecuteCore"/>, so all that is left is the argument spelling and the call.
+        /// </summary>
+        private TerminalCommandResult ExecuteShutdown(TerminalCommandInfo info, string argument)
+        {
+            if (!string.Equals(argument, ShutdownAllArgument, StringComparison.OrdinalIgnoreCase))
+            {
+                return TerminalCommandResult.Rejected(
+                    TerminalResultCode.InvalidArgument, info.Name, argument, string.Empty, 0f,
+                    "'" + info.Usage + "' is the only accepted form.");
+            }
+
+            if (!_simulation.ShutdownAll())
+            {
+                return TerminalCommandResult.Rejected(
+                    TerminalResultCode.ShutdownUnavailable, info.Name, argument, string.Empty, 0f,
+                    "The network is not out of control.");
+            }
+
             return StartCooldown(info, TerminalCommandResult.Applied(
-                TerminalResultCode.PatchApplied, info.Name, argument, canonical, 0f));
+                TerminalResultCode.ShutdownApplied, info.Name, argument, string.Empty, 0f));
+        }
+
+        /// <summary>Success result for a node-targeted command, misfire-aware so both callers phrase it identically.</summary>
+        private TerminalCommandResult BuildApplied(
+            TerminalResultCode code,
+            TerminalCommandInfo info,
+            string argument,
+            string canonicalNodeName,
+            float seconds,
+            bool misfired,
+            Node intended)
+        {
+            if (!misfired)
+            {
+                return TerminalCommandResult.Applied(code, info.Name, argument, canonicalNodeName, seconds);
+            }
+
+            return TerminalCommandResult.AppliedMisfire(
+                code,
+                info.Name,
+                argument,
+                canonicalNodeName,
+                NodeNaming.GetName(_simulation.Graph, intended),
+                seconds);
         }
 
         private static TerminalCommandResult UnknownNode(TerminalCommandInfo info, string argument) =>

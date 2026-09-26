@@ -23,12 +23,26 @@ namespace NightShift.Core
         /// <summary>Seconds this command is unavailable for after a successful run.</summary>
         public float Cooldown { get; }
 
-        public TerminalCommandInfo(string name, int argumentCount, string usage, float cooldown)
+        /// <summary>
+        /// True for a command that exists only in the «сеть вне контроля» end state
+        /// (<c>shutdown --all</c>, Story 005 acceptance criterion 5). Such a command is hidden from
+        /// <c>help</c> and refused until <see cref="NetworkSimulation.IsOutOfControl"/> is true.
+        /// </summary>
+        public bool AvailableOnlyOutOfControl { get; }
+
+        /// <param name="name">Lower-case command word.</param>
+        /// <param name="argumentCount">Exact number of arguments required.</param>
+        /// <param name="usage">Usage line for <c>help</c>.</param>
+        /// <param name="cooldown">Seconds of cooldown after a successful run.</param>
+        /// <param name="availableOnlyOutOfControl">See <see cref="AvailableOnlyOutOfControl"/>.</param>
+        public TerminalCommandInfo(
+            string name, int argumentCount, string usage, float cooldown, bool availableOnlyOutOfControl = false)
         {
             Name = name;
             ArgumentCount = argumentCount;
             Usage = usage;
             Cooldown = cooldown;
+            AvailableOnlyOutOfControl = availableOnlyOutOfControl;
         }
     }
 }

@@ -1,199 +1,54 @@
 using NightShift.Core;
+using NightShift.Core.Data;
 using UnityEngine;
 
 namespace NightShift.Game
 {
     /// <summary>
-    /// The single authoring site for Story 002's playable content: the fixed starting network and
-    /// night 1's spawn schedule. Implements acceptance criterion 5 of
-    /// `production/epics/night-shift/story-002-unity-night-view.md` ("night 1 on a fixed starting
-    /// network plays from start to finish").
+    /// The Unity layer's thin door onto the game's content: the five authored nights and the fixed
+    /// starting network. Every number behind it now lives in <c>NightShift.Core.Data</c>
+    /// (<see cref="NightLibrary"/>, <see cref="StartingNetwork"/>).
     /// </summary>
     /// <remarks>
-    /// <para><b>Why this lives in the Unity layer.</b> <c>NightShift.Core</c> ships the
-    /// <see cref="NightData"/> and <see cref="NetworkGraph"/> types but deliberately no night-1
-    /// instance and no fixed topology - those are content, not simulation. Story 005 replaces this
-    /// class with the full five-night data set; nothing in the views reads a balance number
-    /// directly, they all read <see cref="GameData"/> / <see cref="NightData"/> through the
-    /// simulation.</para>
+    /// <para><b>Why it is now a forwarder.</b> Up to Story 004 this class authored night 1 and the
+    /// starting topology itself, in the Unity assembly. Story 005 needs five nights and a headless
+    /// test that a reasonable defence survives nights 1-2 (acceptance criterion 6), and the test
+    /// cannot see the Unity assembly — so the content moved into Core and this class kept only the
+    /// Unity-facing surface <see cref="GameBootstrap"/> calls, plus the editor-log error reporting
+    /// that Core (which has no <c>Debug</c>) cannot do.</para>
     ///
-    /// <para><b>Determinism.</b> Both seeds below are fixed constants and the schedule is built
-    /// from an injected <see cref="IRandomSource"/>, so every run of night 1 is identical.</para>
-    ///
-    /// <para><b>The starting network.</b> Gateway (0,3) and Core (11,3) are seeded by
-    /// <see cref="NetworkGraph"/> itself. On top of those this class places two Firewalls and a
-    /// Server in series along the main path, and hangs a Honeypot, a second Server and an Ids off
-    /// it as dead-end branches. Because the branches are dead ends, the Gateway-to-Core shortest
-    /// hop path is unique and packet routing is fully predictable.</para>
-    ///
-    /// <para><b>Expected night 1 outcome</b>, traced against
-    /// <see cref="NetworkSimulation"/>'s arrival pipeline at the story-001 default
-    /// <see cref="GameData"/> values: the Honeypot (capacity 3) captures the first three arrivals
-    /// at the first Firewall; the two Firewalls together remove 40 HP, which kills every 30 HP
-    /// Standard packet; Stealth packets are invisible to both Firewalls - the Ids sits off the main
-    /// path on purpose, so it only reveals them at the relay Server, after the last Firewall - and
-    /// leak for 8 Core damage each. Report: 9 blocked, 3 leaked, 0 dissipated, 24 Core damage, Core
-    /// 76/100. Survivable but not free, and every counter on the shift report is non-zero.</para>
+    /// <para><b>Removed with Story 005:</b> <c>ScheduleSeed</c> and <c>CreateNight1(IRandomSource)</c>.
+    /// Schedule jitter is no longer drawn at authoring time — it is drawn inside
+    /// <see cref="NetworkSimulation.StartNight"/> from the simulation's own seeded
+    /// <see cref="IRandomSource"/>, so there is one random stream instead of two and the night is
+    /// still identical for a given seed.</para>
     /// </remarks>
     public static class NightContent
     {
-        /// <summary>Seed for the simulation's own randomness stream.</summary>
-        public const int SimulationSeed = 20260926;
+        /// <summary>Seed for the simulation's randomness stream. See <see cref="NightLibrary.SimulationSeed"/>.</summary>
+        public const int SimulationSeed = NightLibrary.SimulationSeed;
 
-        /// <summary>
-        /// Seed for authoring night 1's spawn schedule. A separate stream, so schedule jitter can
-        /// never shift simulation randomness.
-        /// </summary>
-        public const int ScheduleSeed = 1337;
+        /// <summary>Credits the player owns when day 1 begins. See <see cref="NightLibrary.StartingCredits"/>.</summary>
+        public const float StartingCredits = NightLibrary.StartingCredits;
 
-        /// <summary>
-        /// Credits the player owns when day 1 begins. The starting network is a given, not a
-        /// purchase, so it is not credit-gated - this budget exists purely so the first day has
-        /// something to spend (Story 003). It is content, not simulation balance: enough for two or
-        /// three tools plus their links at the default <see cref="GameData"/> costs, not enough to
-        /// fortify the whole grid.
-        /// </summary>
-        public const float StartingCredits = 200f;
+        /// <summary>How many nights the campaign has. See <see cref="NightLibrary.NightCount"/>.</summary>
+        public const int NightCount = NightLibrary.NightCount;
 
-        // --- Night 1 schedule shape (content, authored here; Story 005 supersedes it) ---
-
-        private const int Night1Number = 1;
-
-        /// <summary>Night length in seconds. The brief specifies 5-7 minute nights; night 1 is the short end.</summary>
-        private const float Night1DurationSeconds = 300f;
-
-        private const float Night1FirstSpawnTime = 8f;
-        private const float Night1SpawnInterval = 25f;
-        private const int Night1PacketCount = 12;
-        private const float Night1SpawnJitterSeconds = 2f;
-
-        /// <summary>Every Nth spawn is a Stealth packet; the rest are Standard.</summary>
-        private const int Night1StealthEveryNth = 3;
-
-        /// <summary>Margin before the night ends after which nothing spawns, so every packet can resolve before the report.</summary>
-        private const float Night1SpawnTailMargin = 12f;
-
-        // --- Fixed starting network layout, in grid cells on the 12x7 grid ---
-
-        private static readonly Vector2Int FirewallACell = new Vector2Int(3, 3);
-        private static readonly Vector2Int FirewallBCell = new Vector2Int(6, 3);
-        private static readonly Vector2Int RelayServerCell = new Vector2Int(8, 3);
-        private static readonly Vector2Int SideServerCell = new Vector2Int(6, 1);
-        private static readonly Vector2Int HoneypotCell = new Vector2Int(3, 5);
-        private static readonly Vector2Int IdsCell = new Vector2Int(8, 5);
-
-        /// <summary>
-        /// The tuning set for Story 002: <see cref="GameData"/> at its story-001 defaults. Kept as a
-        /// factory so a later story can re-balance in exactly one place.
-        /// </summary>
-        public static GameData CreateGameData() => new GameData();
+        /// <summary>The tuning set for the campaign.</summary>
+        public static GameData CreateGameData() => NightLibrary.CreateGameData();
 
         /// <summary>
         /// Night factory for <see cref="GameRunner.Initialize"/>: the <see cref="NightData"/> for a
-        /// 1-based night number.
+        /// 1-based night number. Nights past the fifth repeat the final out-of-control night.
         /// </summary>
-        /// <remarks>
-        /// Story 003 needs a second, third, ... night to exist so that "после отчёта смены наступает
-        /// следующий день" leads somewhere. Escalating attack types and denser schedules are Story
-        /// 005's job, so every night here is night 1's shape with its own number and its own
-        /// deterministic jitter stream (<see cref="ScheduleSeed"/> offset by the night number, so no
-        /// two nights are identical and every run of night N is).
-        /// </remarks>
-        public static NightData CreateNight(int nightNumber)
-        {
-            NightData night = CreateNight1(new SystemRandomSource(ScheduleSeed + nightNumber));
-            night.NightNumber = nightNumber;
-            return night;
-        }
+        public static NightData CreateNight(int nightNumber) => NightLibrary.CreateNight(nightNumber);
 
-        /// <summary>Builds night 1's deterministic spawn schedule.</summary>
-        /// <param name="random">
-        /// Seeded source, used only for spawn-time jitter. Pass
-        /// <c>new SystemRandomSource(NightContent.ScheduleSeed)</c>.
-        /// </param>
-        public static NightData CreateNight1(IRandomSource random)
-        {
-            var night = new NightData
-            {
-                NightNumber = Night1Number,
-                NightDuration = Night1DurationSeconds,
-            };
-
-            float latestSpawn = Night1DurationSeconds - Night1SpawnTailMargin;
-
-            for (int i = 0; i < Night1PacketCount; i++)
-            {
-                float jitter = (float)(random.NextDouble() * 2d - 1d) * Night1SpawnJitterSeconds;
-                float spawnTime = Mathf.Clamp(
-                    Night1FirstSpawnTime + i * Night1SpawnInterval + jitter,
-                    0f,
-                    latestSpawn);
-
-                PacketType type = (i + 1) % Night1StealthEveryNth == 0
-                    ? PacketType.Stealth
-                    : PacketType.Standard;
-
-                night.SpawnSchedule.Add(new PacketSpawnEvent { SpawnTime = spawnTime, Type = type });
-            }
-
-            return night;
-        }
-
-        /// <summary>Places the fixed starting topology described in the class remarks.</summary>
-        /// <remarks>
-        /// Goes through <see cref="NetworkSimulation.Graph"/> rather than
-        /// <see cref="NetworkSimulation.TryPlaceNode"/> on purpose: the starting network is given to
-        /// the player, so it must not be charged against the opening credit balance.
-        /// </remarks>
+        /// <summary>Places the fixed starting topology, logging to the console if the grid refuses it.</summary>
         public static void BuildStartingNetwork(NetworkSimulation simulation)
         {
-            NetworkGraph graph = simulation.Graph;
-
-            Node gateway = graph.GatewayNode;
-            Node core = graph.CoreNode;
-
-            Node firewallA = Place(graph, FirewallACell, NodeType.Firewall);
-            Node firewallB = Place(graph, FirewallBCell, NodeType.Firewall);
-            Node relayServer = Place(graph, RelayServerCell, NodeType.Server);
-            Node sideServer = Place(graph, SideServerCell, NodeType.Server);
-            Node honeypot = Place(graph, HoneypotCell, NodeType.Honeypot);
-            Node ids = Place(graph, IdsCell, NodeType.Ids);
-
-            // Main Gateway -> Core path.
-            Connect(graph, gateway, firewallA);
-            Connect(graph, firewallA, firewallB);
-            Connect(graph, firewallB, relayServer);
-            Connect(graph, relayServer, core);
-
-            // Dead-end branches: they never appear on a shortest path, so routing stays unique.
-            Connect(graph, firewallA, honeypot);
-            Connect(graph, firewallB, sideServer);
-            Connect(graph, relayServer, ids);
-        }
-
-        private static Node Place(NetworkGraph graph, Vector2Int cell, NodeType type)
-        {
-            if (graph.TryPlaceNode(cell.x, cell.y, type, out Node node, out string error))
+            if (!StartingNetwork.TryBuild(simulation, out string error))
             {
-                return node;
-            }
-
-            Debug.LogError("[NightShift] Starting network: could not place " + type +
-                           " at (" + cell.x + "," + cell.y + "): " + error);
-            return null;
-        }
-
-        private static void Connect(NetworkGraph graph, Node a, Node b)
-        {
-            if (a == null || b == null)
-            {
-                return;
-            }
-
-            if (!graph.TryAddLink(a.Id, b.Id, out _, out string error))
-            {
-                Debug.LogError("[NightShift] Starting network: could not link node " + a.Id +
-                               " to node " + b.Id + ": " + error);
+                Debug.LogError("[NightShift] Starting network: " + error);
             }
         }
     }
