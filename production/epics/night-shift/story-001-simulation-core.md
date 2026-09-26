@@ -1,12 +1,12 @@
 # Story 001: Ядро симуляции сети
 
 > **Epic**: Ночная смена (MVP)
-> **Status**: Ready
+> **Status**: In Progress
 > **Layer**: Foundation
 > **Type**: Logic
 > **Estimate**: 1 h
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-09-26
 
 ## Context
 
