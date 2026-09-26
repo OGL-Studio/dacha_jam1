@@ -29,8 +29,10 @@ namespace NightShift.Game
 
         private NetworkSimulation _simulation;
         private ViewConfig _config;
+        private System.Action _onContinue;
 
         private VisualElement _panel;
+        private Button _continueButton;
         private Label _titleLabel;
         private Label _nightLine;
         private Label _earnedLine;
@@ -47,10 +49,24 @@ namespace NightShift.Game
         /// Builds the (hidden) report panel into <paramref name="parent"/> and subscribes to the
         /// night-end events. Call before the night starts.
         /// </summary>
-        public void Initialize(NetworkSimulation simulation, ViewConfig config, VisualElement parent)
+        /// <param name="simulation">Simulation to observe.</param>
+        /// <param name="config">Presentation constants.</param>
+        /// <param name="parent">UI Toolkit layer from <see cref="UiRoot.CreateLayer"/>.</param>
+        /// <param name="onContinue">
+        /// Invoked by «Следующий день» after the panel hides itself - Story 003 acceptance criterion
+        /// 5. An <see cref="System.Action"/> rather than a <see cref="GameRunner"/> reference on
+        /// purpose: the report stays a pure view and cannot start or stop anything else by accident.
+        /// Null leaves the button off, which is what a defeat wants.
+        /// </param>
+        public void Initialize(
+            NetworkSimulation simulation,
+            ViewConfig config,
+            VisualElement parent,
+            System.Action onContinue = null)
         {
             _simulation = simulation;
             _config = config;
+            _onContinue = onContinue;
 
             if (parent == null)
             {
@@ -96,8 +112,20 @@ namespace NightShift.Game
                 _simulation.Data.CoreStartingIntegrity);
 
             SetLinesVisible(true);
+            SetContinueVisible(_onContinue != null && !report.CoreDestroyed);
             _panel.style.display = DisplayStyle.Flex;
             IsShowing = true;
+        }
+
+        /// <summary>Takes the report down. Used when the player moves on to the next day.</summary>
+        public void Hide()
+        {
+            if (_panel != null)
+            {
+                _panel.style.display = DisplayStyle.None;
+            }
+
+            IsShowing = false;
         }
 
         /// <summary>Shows the defeat screen used when the Core is destroyed before the night ends.</summary>
@@ -122,6 +150,9 @@ namespace NightShift.Game
             _integrityLine.text = string.Empty;
 
             SetLinesVisible(true);
+
+            // Defeat is terminal: there is no next day to walk into.
+            SetContinueVisible(false);
             _panel.style.display = DisplayStyle.Flex;
             IsShowing = true;
         }
@@ -185,6 +216,45 @@ namespace NightShift.Game
             _dissipatedLine = AddReportLine(box, "report-dissipated");
             _damageLine = AddReportLine(box, "report-damage");
             _integrityLine = AddReportLine(box, "report-integrity");
+
+            _continueButton = new Button { name = "report-continue", text = UiStrings.ContinueButton };
+            _continueButton.style.fontSize = _config.ReportFontSize;
+            _continueButton.style.color = _config.HudTextColor;
+            _continueButton.style.backgroundColor = _config.ShopButtonSelectedColor;
+            _continueButton.style.marginTop = TitleSpacingPx;
+            _continueButton.style.marginLeft = 0f;
+            _continueButton.style.marginRight = 0f;
+            _continueButton.style.flexShrink = 0f;
+            _continueButton.style.paddingTop = LineSpacingPx;
+            _continueButton.style.paddingBottom = LineSpacingPx;
+            _continueButton.style.paddingLeft = PanelPaddingPx;
+            _continueButton.style.paddingRight = PanelPaddingPx;
+            _continueButton.style.borderTopWidth = _config.ReportBoxBorderWidthPx;
+            _continueButton.style.borderBottomWidth = _config.ReportBoxBorderWidthPx;
+            _continueButton.style.borderLeftWidth = _config.ReportBoxBorderWidthPx;
+            _continueButton.style.borderRightWidth = _config.ReportBoxBorderWidthPx;
+            _continueButton.style.borderTopColor = _config.ReportBoxBorderColor;
+            _continueButton.style.borderBottomColor = _config.ReportBoxBorderColor;
+            _continueButton.style.borderLeftColor = _config.ReportBoxBorderColor;
+            _continueButton.style.borderRightColor = _config.ReportBoxBorderColor;
+            _continueButton.style.display = DisplayStyle.None;
+            _continueButton.clicked += HandleContinueClicked;
+            box.Add(_continueButton);
+        }
+
+        /// <summary>Hides the report and hands control back to the caller's next-day action.</summary>
+        private void HandleContinueClicked()
+        {
+            Hide();
+            _onContinue?.Invoke();
+        }
+
+        private void SetContinueVisible(bool visible)
+        {
+            if (_continueButton != null)
+            {
+                _continueButton.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            }
         }
 
         private Label AddReportLine(VisualElement box, string labelName)

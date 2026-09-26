@@ -46,6 +46,29 @@ namespace NightShift.Game
         /// <summary>World-space centre of the cell occupied by <paramref name="node"/>.</summary>
         public Vector2 NodeToWorld(Node node) => CellToWorld(node.X, node.Y);
 
+        /// <summary>
+        /// Inverse of <see cref="CellToWorld"/>: the grid cell containing a world point.
+        /// </summary>
+        /// <param name="world">World-space point, typically <c>Camera.ScreenToWorldPoint(Input.mousePosition)</c>.</param>
+        /// <param name="x">Grid column, only meaningful when this returns true.</param>
+        /// <param name="y">Grid row, only meaningful when this returns true.</param>
+        /// <returns>False when the point falls outside the grid.</returns>
+        /// <remarks>
+        /// <see cref="CellToWorld"/> returns a cell <i>centre</i>, so the half-cell offset below is
+        /// load-bearing: without it the cell boundaries would land on the cell centres and every
+        /// click in the upper-left quarter of a cell would resolve to its neighbour.
+        /// </remarks>
+        public bool TryWorldToCell(Vector2 world, out int x, out int y)
+        {
+            float column = world.x / CellSize + (Width - 1) * 0.5f;
+            float row = (Height - 1) * 0.5f - world.y / CellSize;
+
+            x = Mathf.FloorToInt(column + 0.5f);
+            y = Mathf.FloorToInt(row + 0.5f);
+
+            return x >= 0 && x < Width && y >= 0 && y < Height;
+        }
+
         /// <summary>World X of the vertical grid line with index <paramref name="index"/> (0..<see cref="Width"/>).</summary>
         public float VerticalGridLineX(int index) => (index - Width * 0.5f) * CellSize;
 

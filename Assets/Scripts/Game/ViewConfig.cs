@@ -118,6 +118,66 @@ namespace NightShift.Game
         /// <summary>UI Toolkit reference resolution. Story 002 targets 60 FPS at 1280x720.</summary>
         public Vector2Int UiReferenceResolution = new Vector2Int(1280, 720);
 
+        // --- Day phase (Story 003) ---
+
+        /// <summary>Width of the day build panel, in reference-resolution pixels.</summary>
+        public float DayPanelWidthPx = 268f;
+
+        /// <summary>Distance the day panel is inset from the left and top screen edges, in reference-resolution pixels.</summary>
+        public float DayPanelMarginPx = 12f;
+
+        /// <summary>Fill of a shop button that is affordable and not selected.</summary>
+        public Color ShopButtonColor = new Color(0.05f, 0.11f, 0.06f, 1f);
+
+        /// <summary>Fill of the shop button whose node type is currently armed for placement.</summary>
+        public Color ShopButtonSelectedColor = new Color(0.12f, 0.30f, 0.15f, 1f);
+
+        /// <summary>Fill of a shop button the player cannot currently afford (acceptance criterion 6).</summary>
+        public Color ShopButtonDisabledColor = new Color(0.06f, 0.06f, 0.06f, 1f);
+
+        /// <summary>Text colour of a shop button the player cannot currently afford.</summary>
+        public Color DisabledTextColor = new Color(0.42f, 0.45f, 0.42f, 1f);
+
+        /// <summary>Border of the shop button whose node type is armed for placement.</summary>
+        public Color ShopButtonSelectedBorderColor = new Color(0.72f, 0.98f, 0.72f, 1f);
+
+        /// <summary>Colour of the short status / rejection line under the shop.</summary>
+        public Color DayStatusColor = new Color(0.95f, 0.78f, 0.35f, 1f);
+
+        public float DayFontSize = 18f;
+        public float DayTitleFontSize = 22f;
+
+        /// <summary>Tint of the translucent node ghost drawn on a legal target cell.</summary>
+        public Color GhostValidColor = new Color(0.62f, 0.98f, 0.62f, 0.45f);
+
+        /// <summary>Tint of the node ghost on an illegal cell, and of an over-long link drag (acceptance criterion 6).</summary>
+        public Color GhostInvalidColor = new Color(1f, 0.32f, 0.28f, 0.45f);
+
+        /// <summary>Colour of the rubber-band line drawn while dragging a link between two nodes.</summary>
+        public Color LinkDragColor = new Color(0.72f, 0.98f, 0.72f, 0.75f);
+
+        /// <summary>Colour of the ring marking the node selected for upgrade.</summary>
+        public Color SelectionRingColor = new Color(1f, 1f, 1f, 0.85f);
+
+        /// <summary>Diameter of that selection ring, as a multiple of <see cref="NodeSize"/>.</summary>
+        public float SelectionRingScale = 1.35f;
+
+        /// <summary>How close, in world units, a right-click must land to a link's centre line to remove it.</summary>
+        public float LinkPickRadius = 0.22f;
+
+        /// <summary>
+        /// Share of a link's purchase price returned when the player removes it (acceptance
+        /// criterion 3).
+        /// </summary>
+        /// <remarks>
+        /// <b>This is a balance number and does not belong here.</b> It should sit in
+        /// <see cref="GameData"/> next to <see cref="GameData.LinkCostPerCell"/>, but
+        /// <c>NightShift.Core</c> has no link-removal concept at all (see
+        /// <see cref="LinkRemovalShim"/>) and Story 003 does not own that assembly. Move it the
+        /// moment Core grows a real <c>RemoveLink</c> API.
+        /// </remarks>
+        public float LinkRefundFraction = 0.5f;
+
         // --- Debug (Story 002 acceptance criterion 6) ---
 
         /// <summary>Key that toggles the debug time scale between x1 and <see cref="FastForwardMultiplier"/>.</summary>

@@ -47,10 +47,13 @@ namespace NightShift.Game
         public const int ScheduleSeed = 1337;
 
         /// <summary>
-        /// Credits the player owns when night 1 begins. The starting network is a given, not a
-        /// purchase, so it is not credit-gated.
+        /// Credits the player owns when day 1 begins. The starting network is a given, not a
+        /// purchase, so it is not credit-gated - this budget exists purely so the first day has
+        /// something to spend (Story 003). It is content, not simulation balance: enough for two or
+        /// three tools plus their links at the default <see cref="GameData"/> costs, not enough to
+        /// fortify the whole grid.
         /// </summary>
-        public const float StartingCredits = 0f;
+        public const float StartingCredits = 200f;
 
         // --- Night 1 schedule shape (content, authored here; Story 005 supersedes it) ---
 
@@ -84,6 +87,24 @@ namespace NightShift.Game
         /// factory so a later story can re-balance in exactly one place.
         /// </summary>
         public static GameData CreateGameData() => new GameData();
+
+        /// <summary>
+        /// Night factory for <see cref="GameRunner.Initialize"/>: the <see cref="NightData"/> for a
+        /// 1-based night number.
+        /// </summary>
+        /// <remarks>
+        /// Story 003 needs a second, third, ... night to exist so that "после отчёта смены наступает
+        /// следующий день" leads somewhere. Escalating attack types and denser schedules are Story
+        /// 005's job, so every night here is night 1's shape with its own number and its own
+        /// deterministic jitter stream (<see cref="ScheduleSeed"/> offset by the night number, so no
+        /// two nights are identical and every run of night N is).
+        /// </remarks>
+        public static NightData CreateNight(int nightNumber)
+        {
+            NightData night = CreateNight1(new SystemRandomSource(ScheduleSeed + nightNumber));
+            night.NightNumber = nightNumber;
+            return night;
+        }
 
         /// <summary>Builds night 1's deterministic spawn schedule.</summary>
         /// <param name="random">

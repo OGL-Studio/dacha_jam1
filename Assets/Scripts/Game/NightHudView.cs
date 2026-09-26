@@ -69,19 +69,49 @@ namespace NightShift.Game
 
             BuildHud(parent);
 
-            int nightNumber = runner.CurrentNight != null ? runner.CurrentNight.NightNumber : 0;
-            _nightLabel.text = string.Format(UiStrings.NightFormat, nightNumber);
-
             SetCredits(simulation.Credits);
             SetIntegrity(simulation.CoreIntegrity);
             SetSpeed(runner.SpeedMultiplier);
-            UpdateClock();
 
             _simulation.OnCreditsChanged += SetCredits;
             _simulation.OnCoreDamaged += HandleCoreDamaged;
             _simulation.OnNightEnded += HandleNightEnded;
             _simulation.OnCoreDestroyed += Hide;
             _runner.OnSpeedChanged += SetSpeed;
+            _runner.OnPhaseChanged += HandlePhaseChanged;
+
+            // Story 003: the game opens in the day phase, where the night clock is meaningless and
+            // the day panel carries credits and integrity instead - so the bar starts hidden and
+            // comes up with the night.
+            HandlePhaseChanged(runner.Phase);
+        }
+
+        /// <summary>Brings the HUD bar back up and refreshes the night number. Called when a night starts.</summary>
+        public void Show()
+        {
+            _hidden = false;
+
+            int nightNumber = _runner.CurrentNight != null ? _runner.CurrentNight.NightNumber : 0;
+            _nightLabel.text = string.Format(UiStrings.NightFormat, nightNumber);
+
+            _shownSecondsRemaining = int.MinValue;
+            UpdateClock();
+
+            if (_bar != null)
+            {
+                _bar.style.display = DisplayStyle.Flex;
+            }
+        }
+
+        private void HandlePhaseChanged(GamePhase phase)
+        {
+            if (phase == GamePhase.Night)
+            {
+                Show();
+                return;
+            }
+
+            Hide();
         }
 
         private void LateUpdate()
@@ -127,6 +157,7 @@ namespace NightShift.Game
             if (_runner != null)
             {
                 _runner.OnSpeedChanged -= SetSpeed;
+                _runner.OnPhaseChanged -= HandlePhaseChanged;
             }
         }
 
