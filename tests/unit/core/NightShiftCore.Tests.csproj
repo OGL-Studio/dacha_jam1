@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Validation project for Story 001 (Ядро симуляции сети). Runs the NightShift.Core
+    simulation (Assets/Scripts/Core/) headlessly via `dotnet test`, with no Unity editor
+    involved.
+
+    TargetFramework vs LangVersion — deliberately different knobs:
+      * TargetFramework is net8.0 because that is what actually runs under `dotnet test`.
+        A project targeting netstandard2.1 alone has no application host and cannot execute
+        NUnit/VSTest — the task's own instructions anticipate this ("whichever keeps it
+        simplest to run with plain dotnet test").
+      * LangVersion is pinned to 9, matching Unity 6.3's supported C# level (see
+        docs/engine-reference/unity/VERSION.md), so nothing in Assets/Scripts/Core compiles
+        here only because a newer C# feature happens to be available on net8.0. The Core
+        source itself uses no UnityEngine or net8-specific APIs, so it is expected to compile
+        unchanged under a real netstandard2.1 Unity asmdef.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>NightShift.Core.Tests</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile the Core simulation source directly, by reference: no Unity/asmdef build step available here. -->
+    <Compile Include="../../../Assets/Scripts/Core/**/*.cs" LinkBase="NightShiftCore" />
+    <Compile Include="**/*.cs" Exclude="obj/**/*.cs;bin/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <!-- Pinned to NUnit 3.x: NUnit 4 moved the classic Assert.AreEqual/IsTrue/... API used
+         throughout this suite into a separate NUnit.Framework.Legacy.ClassicAssert type. -->
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+  </ItemGroup>
+
+</Project>

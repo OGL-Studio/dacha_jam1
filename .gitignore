@@ -150,7 +150,9 @@ node_modules/
 credentials.json
 secrets.json
 
-# .NET build output of the out-of-editor test projects (dotnet test)
+# .NET test projects run outside the editor (dotnet test). Unity's `*.csproj`
+# rule above targets its generated root project files; keep ours tracked.
+!tests/**/*.csproj
 tests/**/bin/
 tests/**/obj/
 *.trx
