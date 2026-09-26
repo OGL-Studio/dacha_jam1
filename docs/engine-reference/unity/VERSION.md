@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | **Engine Version** | Unity 6.3 LTS |
-| **Installed at pin time** | NOT DETERMINED — `/setup-engine` §3 probes the installed editor and records the result here. |
+| **Installed at pin time** | 6000.3.x (Unity 6.3 LTS) — reported by the developer on 2026-09-26, patch not known. NOT PROBED: /setup-engine ran in a cloud container with no Unity editor. |
 | **Release Date** | December 2025 |
 | **Project Pinned** | 2026-02-13 |
 | **Last Docs Verified** | 2026-02-13 |

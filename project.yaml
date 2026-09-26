@@ -7,6 +7,45 @@ framework:
   version: 1.1.1
   last_upgraded: 2026-09-24
 
+project:
+  stage: Concept
+
+modes:
+  rigor: minimal
+  automation: guided
+
+engine:
+  name: "Unity"
+  version: "6.3 LTS"
+  language: "C#"
+  rendering: "URP"
+  physics: "PhysX"
+  # path: omitted — set to the Unity.exe under your Unity Hub Editor folder
+  #       (e.g. .../Hub/Editor/6000.3.x/Editor/Unity.exe) if Unity is not on PATH
+
+specialists:
+  code: "unity-specialist"
+  shader: "unity-shader-specialist"
+  ui: "unity-ui-specialist"
+  additional: ["unity-dots-specialist", "unity-addressables-specialist"]
+
+naming:
+  classes: PascalCase
+  variables: camelCase
+  constants: SCREAMING_SNAKE   # UNVERIFIED — not sourceable from
+                               # docs/engine-reference/unity/; confirm before relying on it
+  signals: PascalCase On<Event>
+  files: PascalCase
+  scenes: PascalCase
+
+commands:
+  # TODO: the Windows -buildTarget identifier could not be sourced (docs.unity3d.com
+  # is unreachable from the setup container); confirm it, or build via File > Build Profiles.
+  build: "Unity -batchmode -quit -projectPath . -buildTarget [TO BE CONFIGURED: Windows target id]"
+  test: "Unity -runTests -projectPath . -testPlatform PlayMode"
+  run: "Builds/Windows/[TO BE CONFIGURED: game name].exe -screen-width 1280 -screen-height 720 -screen-fullscreen 0"
+  smoke: "Unity -batchmode -quit -projectPath . -executeMethod SmokeCheck.Run"
+
 # NOTE: this template ships with no `modes:` block, and the six knobs below must
 # never be added to one.
 #
