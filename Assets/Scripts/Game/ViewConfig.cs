@@ -237,6 +237,51 @@ namespace NightShift.Game
         /// <summary>Vertical offset of a node label from its node's centre, in world units. Negative is below.</summary>
         public float NodeLabelOffsetY = -0.42f;
 
+        // --- Story 006: title screen, letters, endings ---
+        // All three are full-screen overlays inside a panel whose reference resolution is
+        // UiReferenceResolution (1280x720), so every px value below is a 720p pixel: the widths are
+        // chosen so the longest authored line in StoryLibrary fits without wrapping at that size.
+
+        /// <summary>Scrim behind a full-screen story overlay. Opaque: the map must not compete with the text.</summary>
+        public Color OverlayBackgroundColor = new Color(0f, 0.02f, 0.01f, 0.97f);
+
+        /// <summary>Font size of the game's name on the title screen.</summary>
+        public float TitleFontSize = 54f;
+
+        /// <summary>Font size of the prologue lines under the title.</summary>
+        public float TitleBodyFontSize = 20f;
+
+        /// <summary>Colour of the dim controls hint at the bottom of the title screen.</summary>
+        public Color TitleHintColor = new Color(0.40f, 0.60f, 0.42f, 1f);
+
+        /// <summary>Width of the letter and ending panels, in reference-resolution pixels.</summary>
+        public float StoryPanelWidthPx = 820f;
+
+        /// <summary>Inner padding of the letter and ending panels, in reference-resolution pixels.</summary>
+        public float StoryPanelPaddingPx = 26f;
+
+        /// <summary>Font size of a letter's body and of the ending text.</summary>
+        public float StoryBodyFontSize = 17f;
+
+        /// <summary>Font size of a letter's header lines (from / subject) and of the screen title.</summary>
+        public float StoryHeaderFontSize = 20f;
+
+        /// <summary>Text colour of an intact letter: the same calm green as the rest of the terminal.</summary>
+        public Color StoryTextColor = new Color(0.72f, 0.98f, 0.72f, 1f);
+
+        /// <summary>
+        /// Text colour of a damaged transmission - Story 006 criterion 2's «к ночи 5 письма
+        /// искажены». The glyph damage is authored into the strings in <c>StoryLibrary</c>; this is the
+        /// second channel, so the corruption reads even in a still screenshot.
+        /// </summary>
+        public Color StoryCorruptColor = new Color(1f, 0.47f, 0.33f, 1f);
+
+        /// <summary>Colour of the letter counter and of the ending footer.</summary>
+        public Color StoryMetaColor = new Color(0.46f, 0.66f, 0.48f, 1f);
+
+        /// <summary>Colour of a story line printed into the night log by <see cref="StoryLogDirector"/>.</summary>
+        public Color StoryLogColor = new Color(0.66f, 0.86f, 1f, 1f);
+
         // --- Debug (Story 002 acceptance criterion 6) ---
 
         /// <summary>Key that toggles the debug time scale between x1 and <see cref="FastForwardMultiplier"/>.</summary>

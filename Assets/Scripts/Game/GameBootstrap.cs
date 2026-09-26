@@ -72,8 +72,48 @@ namespace NightShift.Game
         }
 
         /// <summary>
-        /// Builds the full runtime object graph and starts night 1. Public so an editor tool or a
-        /// later story can raise the game explicitly.
+        /// Restarts the campaign from scratch - Story 006 acceptance criterion 5's «Заново». Tears the
+        /// whole object graph down and builds a new one.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Why a rebuild and not a reset.</b> Everything a restart has to undo is owned by
+        /// objects this class created: credits and Core integrity live in the
+        /// <see cref="NetworkSimulation"/>, the topology in its <see cref="NetworkGraph"/>, the night
+        /// number in <see cref="GameRunner"/>, the story cursor in <see cref="StoryLogDirector"/>, the
+        /// log lines in <see cref="TerminalView"/>. Dropping the graph and re-running
+        /// <see cref="Build"/> resets all of them by construction, and - unlike a hand-written
+        /// <c>Reset()</c> on each - it cannot fall behind when a later story adds state. It is also why
+        /// this is here and not in a view: no view may rebuild the game.</para>
+        ///
+        /// <para><b>The old root dies at the end of the frame</b>, because
+        /// <see cref="Object.Destroy(Object)"/> is deferred and this is called from inside a UI Toolkit
+        /// click callback - destroying the panel mid-dispatch would be re-entrant. Its camera and audio
+        /// listener are switched off at once so they do not compete with the new ones (Unity warns about
+        /// two active <see cref="AudioListener"/>s), which leaves only the old, now-inert UI panel
+        /// overlapping the new title screen for a single frame.</para>
+        /// </remarks>
+        /// <returns>The root GameObject of the fresh hierarchy.</returns>
+        public static GameObject Restart()
+        {
+            if (_root != null)
+            {
+                Transform oldCamera = _root.transform.Find("MainCamera");
+                if (oldCamera != null)
+                {
+                    oldCamera.gameObject.SetActive(false);
+                }
+
+                UnityEngine.Object.Destroy(_root);
+                _root = null;
+            }
+
+            _root = Build();
+            return _root;
+        }
+
+        /// <summary>
+        /// Builds the full runtime object graph and opens the title screen. Public so an editor tool or
+        /// a later story can raise the game explicitly.
         /// </summary>
         /// <returns>The root GameObject of the created hierarchy.</returns>
         public static GameObject Build()
@@ -108,19 +148,19 @@ namespace NightShift.Game
             // simulation it acts on and injected into the view - the view owns no command logic.
             var terminal = new TerminalCommandProcessor(simulation);
 
-            CreateUi(root.transform, simulation, runner, buildController, terminal, config);
+            // Story 006: on the normal path the title screen is created and owns the first
+            // BeginDay call, so nothing is entered here at all. Under --skipday no title is built.
+            bool skipDay = StartupArgs.HasFlag(SkipDayArg);
+            CreateUi(root.transform, simulation, runner, buildController, terminal, config, !skipDay);
 
             // Last: every view is now subscribed, so no phase or packet event can be missed.
             // Story 003 opens in the day phase - the night is the player's decision now. The
             // --skipday escape hatch preserves the Story 002 behaviour (straight into the night) that
-            // the QaScreenshot `--atsim` capture path depends on.
-            if (StartupArgs.HasFlag(SkipDayArg))
+            // the QaScreenshot `--atsim` capture path depends on, and skips the title screen with it:
+            // an automated capture cannot press a button.
+            if (skipDay)
             {
                 runner.StartNight();
-            }
-            else
-            {
-                runner.BeginDay();
             }
 
             return root;
@@ -156,13 +196,19 @@ namespace NightShift.Game
         /// <c>panelSettings</c> already assigned, so <see cref="UiRoot.Configure"/> runs first and the
         /// object is activated afterwards.
         /// </summary>
+        /// <param name="showTitle">
+        /// False under <c>--skipday</c>: no title screen is built and the caller starts the night
+        /// itself. True on the normal path, where the title screen owns the first
+        /// <see cref="GameRunner.BeginDay"/>.
+        /// </param>
         private static void CreateUi(
             Transform parent,
             NetworkSimulation simulation,
             GameRunner runner,
             DayBuildController buildController,
             TerminalCommandProcessor terminal,
-            ViewConfig config)
+            ViewConfig config,
+            bool showTitle)
         {
             var uiGo = new GameObject("Ui");
             uiGo.transform.SetParent(parent, false);
@@ -188,15 +234,51 @@ namespace NightShift.Game
             // A PickingMode.Ignore element is excluded from hit-testing itself, not its children.
             VisualElement terminalLayer = uiRoot.CreateLayer("terminal-layer", true);
 
+            // Story 006's two full-screen overlays are created last, so they draw over the map, the
+            // HUD, the shop, the terminal and the report - the letters must cover the shop they
+            // interrupt, and the title screen must cover everything.
+            //
+            // Both pass ignorePicking: true for the same reason the terminal layer does, and it is
+            // load-bearing rather than tidy. A PickingMode.Ignore element is excluded from hit-testing
+            // itself but its children are not, so the *panel* inside each layer still takes clicks -
+            // and each panel is display: none while its screen is down, which takes it out of
+            // hit-testing entirely. Had these layers been pickable, they would have sat over the whole
+            // screen forever and eaten every click meant for the report's «Заново» and for the shop.
+            VisualElement letterLayer = uiRoot.CreateLayer("letter-layer", true);
+            VisualElement titleLayer = uiRoot.CreateLayer("title-layer", true);
+
             uiGo.AddComponent<NightHudView>().Initialize(simulation, runner, config, hudLayer);
             uiGo.AddComponent<DayShopView>().Initialize(simulation, runner, buildController, config, dayLayer);
 
-            // The report's only outgoing action is "open the next day", which is the runner's job.
-            uiGo.AddComponent<NightReportView>().Initialize(simulation, config, reportLayer, runner.BeginDay);
+            // The report's outgoing actions are "open the next day" and "restart the campaign" - the
+            // runner's job and this class's job respectively. Neither is the view's.
+            uiGo.AddComponent<NightReportView>().Initialize(simulation, config, reportLayer, runner.BeginDay, RestartCampaign);
 
             // The terminal shows itself only during GamePhase.Night, off the runner's phase event -
             // like every other view here, it is told nothing by its siblings.
-            uiGo.AddComponent<TerminalView>().Initialize(terminal, runner, config, terminalLayer);
+            TerminalView terminalView = uiGo.AddComponent<TerminalView>();
+            terminalView.Initialize(terminal, runner, config, terminalLayer);
+
+            // Story 006 criterion 3: the night's authored lines, on the simulation clock, into the log
+            // the terminal already owns. Initialised before the first night starts, like every view.
+            uiGo.AddComponent<StoryLogDirector>().Initialize(runner, simulation, terminalView);
+
+            // Criterion 2: the letters open every day, including day 1. The view finds its own day
+            // number on GameRunner.OnPhaseChanged, so nothing has to remember to show it.
+            uiGo.AddComponent<LetterView>().Initialize(runner, buildController, config, letterLayer);
+
+            // Criterion 1, and the last thing built: the title screen is up from the first frame and
+            // its button is what raises day 1. Nothing else calls BeginDay on the normal path.
+            if (showTitle)
+            {
+                uiGo.AddComponent<TitleScreenView>().Initialize(config, titleLayer, runner.BeginDay);
+            }
         }
+
+        /// <summary>
+        /// Adapter for <see cref="NightReportView"/>'s «Заново» action: a method group, so the view is
+        /// handed a plain <see cref="System.Action"/> and never sees this class.
+        /// </summary>
+        private static void RestartCampaign() => Restart();
     }
 }

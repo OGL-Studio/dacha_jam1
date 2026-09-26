@@ -268,6 +268,33 @@ namespace NightShift.Game
         // Log
         // ------------------------------------------------------------------
 
+        /// <summary>
+        /// Prints one authored story line into the night log - Story 006 acceptance criterion 3. Called
+        /// by <see cref="StoryLogDirector"/> on the schedule held in
+        /// <c>NightShift.Core.Data.StoryLibrary</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Why the terminal owns the rendering.</b> The story lines share the log with command
+        /// output, so they have to share its trimming, its scroll-to-bottom and its element budget; a
+        /// second overlay writing into the same panel would fight all three. This is the whole of the
+        /// terminal's story surface - it decides nothing about <i>what</i> or <i>when</i>.</para>
+        ///
+        /// <para>A distinct colour keeps a story line from being mistaken for the result of something
+        /// the player typed, and <paramref name="corrupted"/> switches to the warning colour for the
+        /// lines that are not coming from a colleague any more.</para>
+        /// </remarks>
+        /// <param name="text">The line, already in Russian, from the data file.</param>
+        /// <param name="corrupted">True for a damaged transmission (nights 4-5).</param>
+        public void AppendStoryLine(string text, bool corrupted)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            AppendLine(text, corrupted ? _config.StoryCorruptColor : _config.StoryLogColor);
+        }
+
         /// <summary>Appends one line to the scrolling history, trims the oldest, and scrolls to the bottom.</summary>
         private void AppendLine(string text, Color color)
         {

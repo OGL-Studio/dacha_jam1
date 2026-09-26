@@ -1,12 +1,12 @@
 # Story 006: Сюжет и экраны
 
 > **Epic**: Ночная смена (MVP)
-> **Status**: Ready
+> **Status**: In Progress
 > **Layer**: Presentation
 > **Type**: UI
 > **Estimate**: 35 min
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-09-26
 
 ## Context
 

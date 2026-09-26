@@ -151,6 +151,44 @@ namespace NightShift.Game
         public const string TerminalInvalidArgumentFormat = "Так нельзя. Формат: {0}";
         public const string TerminalShutdownApplied = "Сеть выключена. Смена закончена.";
 
+        // --- Story 006: title screen, letters, endings ---
+        // Chrome only. Every *narrative* string - the prologue, the letters, the timed night lines,
+        // the two ending texts - lives in NightShift.Core.Data.StoryLibrary, per the story's
+        // implementation note ("texts in a data file, not in UI code").
+
+        /// <summary>The game's name on the title screen.</summary>
+        public const string TitleGameName = "НОЧНАЯ СМЕНА";
+
+        /// <summary>Line under the title button, telling the player what input the game expects.</summary>
+        public const string TitleHint = "Мышь — строить · Терминал — команды · F4 — ускорение";
+
+        /// <summary>Header of the between-days letter screen, e.g. "ПОЧТА — УТРО ДНЯ 3".</summary>
+        public const string LetterScreenTitleFormat = "ПОЧТА — УТРО ДНЯ {0}";
+
+        /// <summary>Counter of the letter being read, e.g. "Письмо 1 из 2".</summary>
+        public const string LetterCounterFormat = "Письмо {0} из {1}";
+
+        /// <summary>From-field label of a letter.</summary>
+        public const string LetterFromFormat = "От: {0}";
+
+        /// <summary>Subject-field label of a letter.</summary>
+        public const string LetterSubjectFormat = "Тема: {0}";
+
+        /// <summary>Advances to the next unread letter.</summary>
+        public const string LetterNextButton = "Следующее письмо";
+
+        /// <summary>Closes the last letter and hands the day over to the player.</summary>
+        public const string LetterCloseButton = "К монтажу";
+
+        /// <summary>Title of the victory ending screen (<c>shutdown --all</c> on the final night).</summary>
+        public const string EndingTitle = "СЕТЬ ОТКЛЮЧЕНА";
+
+        /// <summary>Footer under the ending text.</summary>
+        public const string EndingFooter = "Ночная смена — конец.";
+
+        /// <summary>Restarts the campaign from the title screen, from the defeat or the ending screen.</summary>
+        public const string RestartButton = "Заново";
+
         /// <summary>Russian description of a terminal command, keyed by its command word.</summary>
         public static string GetCommandDescription(string commandName)
         {

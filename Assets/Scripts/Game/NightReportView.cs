@@ -1,4 +1,5 @@
 using NightShift.Core;
+using NightShift.Core.Data;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -11,9 +12,15 @@ namespace NightShift.Game
     /// screen").
     /// </summary>
     /// <remarks>
-    /// <para><b>Deliberately unstyled.</b> Plain labels on a dark panel: readable, and nothing more.
-    /// Styled screens are Story 006 and are explicitly out of scope here, so this view sets only the
-    /// colours and sizes it needs to be legible without a UI Toolkit theme.</para>
+    /// <para><b>Three screens, one panel (extended by Story 006).</b> The same box renders the morning
+    /// report (criterion 4: заработано / заблокировано / пропущено / целостность), the «ВЫ УВОЛЕНЫ»
+    /// defeat screen with its «Заново» button (criterion 5) and the <c>shutdown --all</c> ending
+    /// (criterion 6). They share every style, the narrative block and the button row, and differ only in
+    /// which of those are filled - so they were extended here rather than split into three views that
+    /// would each have to re-derive the same layout without a UI Toolkit theme.</para>
+    ///
+    /// <para><b>Deliberately plain.</b> Labels on a dark panel, every colour and size set explicitly:
+    /// a runtime <c>PanelSettings</c> has no theme style sheet to inherit from.</para>
     ///
     /// <para><b>Two entry points.</b> <see cref="NetworkSimulation"/> raises
     /// <see cref="NetworkSimulation.OnNightEnded"/> when the clock runs out, but raises
@@ -30,9 +37,13 @@ namespace NightShift.Game
         private NetworkSimulation _simulation;
         private ViewConfig _config;
         private System.Action _onContinue;
+        private System.Action _onRestart;
+        private bool _endingShown;
 
         private VisualElement _panel;
+        private VisualElement _storyBox;
         private Button _continueButton;
+        private Button _restartButton;
         private Label _titleLabel;
         private Label _nightLine;
         private Label _earnedLine;
@@ -58,15 +69,23 @@ namespace NightShift.Game
         /// purpose: the report stays a pure view and cannot start or stop anything else by accident.
         /// Null leaves the button off, which is what a defeat wants.
         /// </param>
+        /// <param name="onRestart">
+        /// Invoked by «Заново» on the defeat and ending screens - Story 006 acceptance criterion 5.
+        /// Restarting means rebuilding the whole game, which is <see cref="GameBootstrap"/>'s job and
+        /// emphatically not a view's, so this too arrives as an <see cref="System.Action"/>. Null
+        /// leaves the button off.
+        /// </param>
         public void Initialize(
             NetworkSimulation simulation,
             ViewConfig config,
             VisualElement parent,
-            System.Action onContinue = null)
+            System.Action onContinue = null,
+            System.Action onRestart = null)
         {
             _simulation = simulation;
             _config = config;
             _onContinue = onContinue;
+            _onRestart = onRestart;
 
             if (parent == null)
             {
@@ -78,6 +97,11 @@ namespace NightShift.Game
 
             _simulation.OnNightEnded += HandleNightEnded;
             _simulation.OnCoreDestroyed += HandleCoreDestroyed;
+
+            // Story 006 acceptance criterion 6. Both halves of the victory are consumed: the event
+            // fires first (from NetworkSimulation.ShutdownAll), the report follows with Victory set.
+            // Whichever arrives is enough, and _endingShown keeps the second one from re-rendering.
+            _simulation.OnVictory += HandleVictory;
         }
 
         private void OnDestroy()
@@ -89,9 +113,14 @@ namespace NightShift.Game
 
             _simulation.OnNightEnded -= HandleNightEnded;
             _simulation.OnCoreDestroyed -= HandleCoreDestroyed;
+            _simulation.OnVictory -= HandleVictory;
         }
 
-        /// <summary>Fills and shows the shift report.</summary>
+        /// <summary>
+        /// Fills and shows the shift report: earned / blocked / leaked / integrity (Story 006
+        /// acceptance criterion 4). Routes to the ending screen instead when the report is the victory
+        /// one, and to the defeat presentation when the Core fell.
+        /// </summary>
         public void Show(NightReport report)
         {
             if (_panel == null || report == null)
@@ -99,6 +128,13 @@ namespace NightShift.Game
                 return;
             }
 
+            if (report.Victory)
+            {
+                ShowEnding();
+                return;
+            }
+
+            SetStoryLines(report.CoreDestroyed ? StoryLibrary.DefeatEnding : null);
             _titleLabel.text = report.CoreDestroyed ? UiStrings.GameOverTitle : UiStrings.ReportTitle;
             _nightLine.text = string.Format(UiStrings.ReportNightFormat, report.NightNumber);
             _earnedLine.text = string.Format(UiStrings.ReportEarnedFormat, Mathf.FloorToInt(report.CreditsEarned));
@@ -113,6 +149,10 @@ namespace NightShift.Game
 
             SetLinesVisible(true);
             SetContinueVisible(_onContinue != null && !report.CoreDestroyed);
+
+            // A lost campaign is the one case where the report is a dead end without «Заново»: the
+            // Core is gone, so there is no next day to walk into.
+            SetRestartVisible(report.CoreDestroyed);
             _panel.style.display = DisplayStyle.Flex;
             IsShowing = true;
         }
@@ -128,14 +168,18 @@ namespace NightShift.Game
             IsShowing = false;
         }
 
-        /// <summary>Shows the defeat screen used when the Core is destroyed before the night ends.</summary>
+        /// <summary>
+        /// Shows the «ВЫ УВОЛЕНЫ» screen used when Core integrity reaches zero - Story 006 acceptance
+        /// criterion 5. Carries the «Заново» button, which is the only way out of it.
+        /// </summary>
         public void ShowDefeat()
         {
-            if (_panel == null)
+            if (_panel == null || _endingShown)
             {
                 return;
             }
 
+            SetStoryLines(StoryLibrary.DefeatEnding);
             _titleLabel.text = UiStrings.GameOverTitle;
             _nightLine.text = UiStrings.GameOverBody;
             _earnedLine.text = string.Format(
@@ -151,15 +195,88 @@ namespace NightShift.Game
 
             SetLinesVisible(true);
 
-            // Defeat is terminal: there is no next day to walk into.
+            // Defeat is terminal: there is no next day to walk into, only «Заново».
             SetContinueVisible(false);
+            SetRestartVisible(true);
             _panel.style.display = DisplayStyle.Flex;
             IsShowing = true;
+        }
+
+        /// <summary>
+        /// Shows the ending: <c>shutdown --all</c> pulled on the night the network went out of control.
+        /// Story 006 acceptance criterion 6.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Deliberately not a shift report.</b> The numbers of the last night are beside the
+        /// point once the network is off, so every statistics line is blanked and the screen is the
+        /// ending text from <c>StoryLibrary.VictoryEnding</c> plus «Заново». That is also why this is a
+        /// separate method rather than a flag inside <see cref="Show"/>.</para>
+        ///
+        /// <para><b>Idempotent.</b> The victory arrives twice - once as
+        /// <see cref="NetworkSimulation.OnVictory"/> and once as a <see cref="NightReport"/> with
+        /// <see cref="NightReport.Victory"/> set - and <see cref="_endingShown"/> makes the second
+        /// delivery a no-op. It also outranks a late <see cref="ShowDefeat"/>: the player who pulled the
+        /// rubber-band on the last packet did not get fired.</para>
+        /// </remarks>
+        public void ShowEnding()
+        {
+            if (_panel == null || _endingShown)
+            {
+                return;
+            }
+
+            _endingShown = true;
+
+            _titleLabel.text = UiStrings.EndingTitle;
+            SetStoryLines(StoryLibrary.VictoryEnding);
+
+            _nightLine.text = UiStrings.EndingFooter;
+            _earnedLine.text = string.Empty;
+            _blockedLine.text = string.Empty;
+            _leakedLine.text = string.Empty;
+            _dissipatedLine.text = string.Empty;
+            _damageLine.text = string.Empty;
+            _integrityLine.text = string.Empty;
+
+            SetLinesVisible(true);
+            SetContinueVisible(false);
+            SetRestartVisible(true);
+            _panel.style.display = DisplayStyle.Flex;
+            IsShowing = true;
+        }
+
+        /// <summary>
+        /// Replaces the narrative block above the statistics with <paramref name="lines"/>, or clears it
+        /// when they are null. Each authored line becomes its own label, so an empty string in the data
+        /// renders as a blank spacer row exactly as written.
+        /// </summary>
+        private void SetStoryLines(string[] lines)
+        {
+            if (_storyBox == null)
+            {
+                return;
+            }
+
+            _storyBox.Clear();
+            if (lines == null || lines.Length == 0)
+            {
+                _storyBox.style.display = DisplayStyle.None;
+                return;
+            }
+
+            foreach (string line in lines)
+            {
+                _storyBox.Add(StoryUi.CreateBodyLabel(line, _config, false));
+            }
+
+            _storyBox.style.display = DisplayStyle.Flex;
         }
 
         private void HandleNightEnded(NightReport report) => Show(report);
 
         private void HandleCoreDestroyed() => ShowDefeat();
+
+        private void HandleVictory() => ShowEnding();
 
         private void BuildPanel(VisualElement parent)
         {
@@ -209,6 +326,16 @@ namespace NightShift.Game
             _titleLabel.style.flexShrink = 0f;
             box.Add(_titleLabel);
 
+            // Narrative first, numbers second: on the defeat and ending screens the story text is the
+            // screen, and on an ordinary morning report this block is empty and collapsed.
+            _storyBox = new VisualElement { name = "report-story" };
+            _storyBox.style.flexDirection = FlexDirection.Column;
+            _storyBox.style.alignItems = Align.FlexStart;
+            _storyBox.style.flexShrink = 0f;
+            _storyBox.style.marginBottom = TitleSpacingPx;
+            _storyBox.style.display = DisplayStyle.None;
+            box.Add(_storyBox);
+
             _nightLine = AddReportLine(box, "report-night");
             _earnedLine = AddReportLine(box, "report-earned");
             _blockedLine = AddReportLine(box, "report-blocked");
@@ -240,6 +367,29 @@ namespace NightShift.Game
             _continueButton.style.display = DisplayStyle.None;
             _continueButton.clicked += HandleContinueClicked;
             box.Add(_continueButton);
+
+            // Story 006 acceptance criterion 5: the way out of a lost campaign, and out of the ending.
+            _restartButton = StoryUi.CreateButton(UiStrings.RestartButton, _config, PanelPaddingPx, LineSpacingPx);
+            _restartButton.name = "report-restart";
+            _restartButton.style.marginTop = TitleSpacingPx;
+            _restartButton.style.display = DisplayStyle.None;
+            _restartButton.clicked += HandleRestartClicked;
+            box.Add(_restartButton);
+        }
+
+        /// <summary>
+        /// Hands the campaign restart to the action the bootstrap injected. The panel is <i>not</i>
+        /// hidden first: a restart destroys this whole view along with the rest of the object graph, and
+        /// leaving the old screen up until that happens means no frame shows a bare map.
+        /// </summary>
+        private void HandleRestartClicked() => _onRestart?.Invoke();
+
+        private void SetRestartVisible(bool visible)
+        {
+            if (_restartButton != null)
+            {
+                _restartButton.style.display = visible && _onRestart != null ? DisplayStyle.Flex : DisplayStyle.None;
+            }
         }
 
         /// <summary>Hides the report and hands control back to the caller's next-day action.</summary>

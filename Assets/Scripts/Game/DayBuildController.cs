@@ -67,6 +67,27 @@ namespace NightShift.Game
         /// <summary>True while the pointer is over a pickable day-phase UI element; map clicks are then ignored.</summary>
         public bool PointerOverUi { get; set; }
 
+        /// <summary>
+        /// True while a full-screen story overlay is up (the morning letters). Suppresses all map
+        /// interaction and the placement ghost for as long as it is set - Story 006.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Why <see cref="PointerOverUi"/> is not enough.</b> That flag is driven by
+        /// <see cref="DayShopView"/>'s own pointer-enter / pointer-leave handlers, so a modal setting it
+        /// would be cleared again by the next leave event the shop happens to receive - and a leave
+        /// event is exactly what UI Toolkit sends when an overlay appears under the cursor. A separate
+        /// flag owned by the overlay cannot be stepped on.</para>
+        ///
+        /// <para><b>And why a flag is needed at all.</b> A pickable full-screen panel stops clicks
+        /// reaching other <i>UI</i>, but map placement is polled from the legacy <see cref="Input"/>
+        /// class, which UI Toolkit hit-testing does not feed. Without this the player would place nodes
+        /// blindly behind a letter.</para>
+        /// </remarks>
+        public bool ModalOpen { get; set; }
+
+        /// <summary>True when map interaction is suppressed, for whichever of the two reasons.</summary>
+        private bool MapInputBlocked => PointerOverUi || ModalOpen;
+
         /// <summary>True when a shop node type is armed for placement.</summary>
         public bool HasTypeSelection => _hasTypeSelection;
 
@@ -207,7 +228,7 @@ namespace NightShift.Game
             bool onGrid = _layout.TryWorldToCell(world, out int cellX, out int cellY);
             Node hovered = onGrid ? _simulation.Graph.GetNodeAt(cellX, cellY) : null;
 
-            if (!PointerOverUi)
+            if (!MapInputBlocked)
             {
                 if (Input.GetMouseButtonDown(0))
                 {
@@ -495,7 +516,7 @@ namespace NightShift.Game
 
         private void UpdateNodeGhost(bool onGrid, int cellX, int cellY)
         {
-            bool show = _hasTypeSelection && onGrid && !PointerOverUi;
+            bool show = _hasTypeSelection && onGrid && !MapInputBlocked;
             SetActive(_ghostNode, show);
             if (!show)
             {
