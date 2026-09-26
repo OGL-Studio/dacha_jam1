@@ -466,6 +466,17 @@ namespace NightShift.Game
             _panel.style.bottom = _config.TerminalMarginPx;
             _panel.style.width = _config.TerminalWidthPx;
             _panel.style.height = _config.TerminalHeightPx;
+
+            // Both dimensions above are 720p pixel counts, and the panel's share of the screen changes
+            // with the window's aspect ratio: at match 0.5 a window narrower than 16:9 gives the panel
+            // fewer reference pixels across, and a wider one gives it fewer down (see
+            // MapCamera.LeftGutterScreenFraction for the arithmetic). Without these caps the terminal
+            // eats two-fifths of a 4:3 screen's width, and on an ultra-wide it grows towards the HUD
+            // bar. The log inside is already flexible - its viewport takes whatever height is left over
+            // - so shrinking the panel costs lines of history, not layout.
+            _panel.style.maxWidth = Length.Percent(_config.LeftPanelMaxWidthPercent);
+            _panel.style.maxHeight = Length.Percent(_config.TerminalMaxHeightPercent);
+
             _panel.style.flexDirection = FlexDirection.Column;
             _panel.style.backgroundColor = _config.TerminalBackgroundColor;
             _panel.style.paddingLeft = PanelPaddingPx;

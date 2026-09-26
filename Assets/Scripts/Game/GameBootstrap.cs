@@ -118,6 +118,13 @@ namespace NightShift.Game
         /// <returns>The root GameObject of the created hierarchy.</returns>
         public static GameObject Build()
         {
+            // First, and before any view exists: the player's window-size choice from a previous
+            // session. Doing it here rather than in a view means the very first frame is drawn at the
+            // right size, so no layout is ever measured against a resolution the player did not pick.
+            // It is a no-op when they have never opened the settings screen, and when the window
+            // already matches - which is what makes it safe on the Restart() path too.
+            DisplaySettings.ApplySaved();
+
             var config = new ViewConfig();
 
             GameData data = NightContent.CreateGameData();
@@ -148,15 +155,16 @@ namespace NightShift.Game
             // simulation it acts on and injected into the view - the view owns no command logic.
             var terminal = new TerminalCommandProcessor(simulation);
 
-            // Story 006: on the normal path the title screen is created and owns the first
-            // BeginDay call, so nothing is entered here at all. Under --skipday no title is built.
+            // Story 006: on the normal path the main menu is created and owns the first BeginDay call,
+            // so nothing is entered here at all. Under --skipday the menu is still built - the player
+            // may want the settings screen - but it is not shown.
             bool skipDay = StartupArgs.HasFlag(SkipDayArg);
             CreateUi(root.transform, simulation, runner, buildController, terminal, config, !skipDay);
 
             // Last: every view is now subscribed, so no phase or packet event can be missed.
             // Story 003 opens in the day phase - the night is the player's decision now. The
             // --skipday escape hatch preserves the Story 002 behaviour (straight into the night) that
-            // the QaScreenshot `--atsim` capture path depends on, and skips the title screen with it:
+            // the QaScreenshot `--atsim` capture path depends on, and skips the menu with it:
             // an automated capture cannot press a button.
             if (skipDay)
             {
@@ -196,10 +204,10 @@ namespace NightShift.Game
         /// <c>panelSettings</c> already assigned, so <see cref="UiRoot.Configure"/> runs first and the
         /// object is activated afterwards.
         /// </summary>
-        /// <param name="showTitle">
-        /// False under <c>--skipday</c>: no title screen is built and the caller starts the night
-        /// itself. True on the normal path, where the title screen owns the first
-        /// <see cref="GameRunner.BeginDay"/>.
+        /// <param name="showMenu">
+        /// False under <c>--skipday</c>: the menu is built but not shown, and the caller starts the
+        /// night itself. True on the normal path, where the menu is the game's first frame and its
+        /// first entry owns the first <see cref="GameRunner.BeginDay"/>.
         /// </param>
         private static void CreateUi(
             Transform parent,
@@ -208,7 +216,7 @@ namespace NightShift.Game
             DayBuildController buildController,
             TerminalCommandProcessor terminal,
             ViewConfig config,
-            bool showTitle)
+            bool showMenu)
         {
             var uiGo = new GameObject("Ui");
             uiGo.transform.SetParent(parent, false);
@@ -239,14 +247,22 @@ namespace NightShift.Game
             // its children are not, so the panel inside each layer still takes its own clicks, and
             // each panel is display: none while its screen is down, which takes it out of hit-testing
             // entirely. Layer order still decides what draws and picks above what: the report covers
-            // the day panel, the terminal covers the report, and Story 006's letters and title screen
-            // cover everything - the letters must cover the shop they interrupt.
+            // the day panel, the terminal covers the report, Story 006's letters cover the shop they
+            // interrupt, and the menu stack covers everything - it can be opened from inside the day,
+            // over a letter, so it has to be the top of the pile.
             VisualElement hudLayer = uiRoot.CreateLayer("hud-layer", true);
             VisualElement dayLayer = uiRoot.CreateLayer("day-layer", true);
             VisualElement reportLayer = uiRoot.CreateLayer("report-layer", true);
             VisualElement terminalLayer = uiRoot.CreateLayer("terminal-layer", true);
             VisualElement letterLayer = uiRoot.CreateLayer("letter-layer", true);
-            VisualElement titleLayer = uiRoot.CreateLayer("title-layer", true);
+
+            // Three layers and not one for the menu stack, so the UI Toolkit debugger shows which
+            // screen is up at a glance. They are mutually exclusive in practice - MenuController shows
+            // exactly one of the three - so their relative order never matters; that they are all above
+            // the game's own layers does.
+            VisualElement menuLayer = uiRoot.CreateLayer("menu-layer", true);
+            VisualElement settingsLayer = uiRoot.CreateLayer("settings-layer", true);
+            VisualElement helpLayer = uiRoot.CreateLayer("help-layer", true);
 
             uiGo.AddComponent<NightHudView>().Initialize(simulation, runner, config, hudLayer);
             uiGo.AddComponent<DayShopView>().Initialize(simulation, runner, buildController, config, dayLayer, pointerFloorLayer);
@@ -268,12 +284,42 @@ namespace NightShift.Game
             // number on GameRunner.OnPhaseChanged, so nothing has to remember to show it.
             uiGo.AddComponent<LetterView>().Initialize(runner, buildController, config, letterLayer);
 
-            // Criterion 1, and the last thing built: the title screen is up from the first frame and
-            // its button is what raises day 1. Nothing else calls BeginDay on the normal path.
-            if (showTitle)
-            {
-                uiGo.AddComponent<TitleScreenView>().Initialize(config, titleLayer, runner.BeginDay);
-            }
+            // Criterion 1, and the last thing built: the main menu is up from the first frame and its
+            // first entry is what raises day 1. Nothing else calls BeginDay on the normal path.
+            //
+            // The controller is created before the three views because the views are handed its
+            // navigation actions at construction time, and it is initialised after them because it
+            // needs the views to show them. Taking a method-group delegate off a component that has not
+            // been Initialize()d yet is safe - the delegate only captures the instance, and nothing is
+            // invoked until the player clicks.
+            MenuController menuController = uiGo.AddComponent<MenuController>();
+
+            MainMenuView menuView = uiGo.AddComponent<MainMenuView>();
+            menuView.Initialize(
+                config,
+                menuLayer,
+                menuController.PrimaryAction,
+                menuController.SettingsAction,
+                menuController.HelpAction,
+                menuController.QuitAction);
+
+            SettingsView settingsView = uiGo.AddComponent<SettingsView>();
+            settingsView.Initialize(config, settingsLayer, menuController.BackAction);
+
+            HelpView helpView = uiGo.AddComponent<HelpView>();
+            helpView.Initialize(config, helpLayer, menuController.BackAction);
+
+            // The build controller goes in so the menu can raise DayBuildController.ModalOpen: the map
+            // is picked from legacy Input, which UI Toolkit hit-testing never sees, so a full-screen
+            // pickable panel on its own would not stop the player building underneath the menu.
+            menuController.Initialize(
+                runner,
+                buildController,
+                menuView,
+                settingsView,
+                helpView,
+                runner.BeginDay,
+                showMenu);
         }
 
         /// <summary>

@@ -282,6 +282,14 @@ namespace NightShift.Game
             _panel.style.left = _config.DayPanelMarginPx;
             _panel.style.top = _config.DayPanelMarginPx;
             _panel.style.width = _config.DayPanelWidthPx;
+
+            // The width above is a 720p pixel count. A window narrower than 16:9 gives the panel fewer
+            // reference pixels across, at which point that count starts crowding the map - so it is
+            // also capped as a share of the screen. MapCamera.LeftGutterScreenFraction applies the same
+            // cap when it reserves the left gutter, and the two must stay in step: a panel wider than
+            // the gutter covers the Gateway at column 0.
+            _panel.style.maxWidth = Length.Percent(_config.LeftPanelMaxWidthPercent);
+
             _panel.style.flexDirection = FlexDirection.Column;
             _panel.style.alignItems = Align.Stretch;
 
@@ -341,6 +349,14 @@ namespace NightShift.Game
             _startShiftButton.style.marginTop = SectionSpacingPx;
             _startShiftButton.clicked += () => _runner.StartNight();
             StyleActionButton(_startShiftButton, true, true, _config.HudTextColor);
+
+            // Discoverability for the menu the polish pass added. Escape is only read during the day -
+            // at night the terminal's input field owns it (see MenuController) - so this hint lives on
+            // the day panel and nowhere else, which is exactly where it is true.
+            Label menuHint = AddLabel(_panel, "day-menu-hint", _config.TerminalHintFontSize, _config.TitleHintColor);
+            menuHint.text = UiStrings.MenuEscHint;
+            menuHint.style.marginTop = RowSpacingPx;
+            menuHint.style.marginBottom = 0f;
         }
 
         /// <summary>

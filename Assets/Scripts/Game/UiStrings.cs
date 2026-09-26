@@ -159,8 +159,8 @@ namespace NightShift.Game
         /// <summary>The game's name on the title screen.</summary>
         public const string TitleGameName = "НОЧНАЯ СМЕНА";
 
-        /// <summary>Line under the title button, telling the player what input the game expects.</summary>
-        public const string TitleHint = "Мышь — строить · Терминал — команды · F4 — ускорение";
+        /// <summary>Line under the menu entries on the title screen, telling the player what input the game expects.</summary>
+        public const string TitleHint = "Мышь — строить · Терминал — команды · F4 — ускорение · подробнее — «Справка»";
 
         /// <summary>Header of the between-days letter screen, e.g. "ПОЧТА — УТРО ДНЯ 3".</summary>
         public const string LetterScreenTitleFormat = "ПОЧТА — УТРО ДНЯ {0}";
@@ -188,6 +188,103 @@ namespace NightShift.Game
 
         /// <summary>Restarts the campaign from the title screen, from the defeat or the ending screen.</summary>
         public const string RestartButton = "Заново";
+
+        // --- Main menu, settings and help (player-requested polish pass) ---
+        // The menu is also the title screen, so the game's name and the prologue above are shared with
+        // it; only the entries and the two sibling screens are new here.
+
+        /// <summary>First menu entry once a shift is under way: closes the menu and goes back to play.</summary>
+        public const string MenuResumeButton = "Продолжить";
+
+        /// <summary>Opens the settings screen.</summary>
+        public const string MenuSettingsButton = "Настройки";
+
+        /// <summary>Opens the help screen.</summary>
+        public const string MenuHelpButton = "Справка";
+
+        /// <summary>Leaves the game.</summary>
+        public const string MenuQuitButton = "Выход";
+
+        /// <summary>Returns from the settings or the help screen to the main menu.</summary>
+        public const string BackButton = "Назад";
+
+        /// <summary>Hint under the entries when the menu was opened from inside a running shift.</summary>
+        public const string MenuHintInGame = "Esc — вернуться в игру";
+
+        /// <summary>Hint on the settings and the help screens.</summary>
+        public const string MenuBackHint = "Esc — назад";
+
+        /// <summary>Discoverability line on the day panel: how the menu is reached during play.</summary>
+        public const string MenuEscHint = "Esc — меню";
+
+        // --- Settings ---
+
+        public const string SettingsTitle = "НАСТРОЙКИ";
+        public const string SettingsWindowSizeHeader = "РАЗМЕР ОКНА";
+        public const string SettingsModeHeader = "РЕЖИМ ЭКРАНА";
+
+        /// <summary>One window-size option, e.g. "1280×720".</summary>
+        public const string SettingsSizeFormat = "{0}×{1}";
+
+        public const string SettingsModeWindowed = "В окне";
+        public const string SettingsModeFullscreen = "Во весь экран";
+
+        /// <summary>Readout of the active choice, e.g. "Сейчас: 1600×900, в окне".</summary>
+        public const string SettingsCurrentFormat = "Сейчас: {0}×{1} — {2}";
+
+        /// <summary>
+        /// Warning that the setting cannot be judged from the editor. Kept honest on purpose:
+        /// <c>Screen.SetResolution</c> is a no-op against the editor's Game view.
+        /// </summary>
+        public const string SettingsNote = "Размер применяется сразу и запоминается. В редакторе Unity размер задаёт окно Game — проверяйте в собранной игре.";
+
+        // --- Help ---
+        // Every line below was read back off the code that implements it: DayBuildController for the
+        // day, TerminalView and TerminalCommandProcessor for the night. If a control changes, this is
+        // the file that has to change with it.
+
+        public const string HelpTitle = "СПРАВКА";
+
+        public const string HelpGoalHeader = "ЦЕЛЬ";
+
+        /// <summary>The goal of the campaign, in two lines.</summary>
+        public static readonly string[] HelpGoalLines =
+        {
+            "Пять ночей вы держите сеть. Ядро должно дожить до утра: как только его целостность падает до нуля — вас увольняют.",
+            "Днём вы строите защиту на кредиты компании, ночью вмешиваетесь из терминала.",
+        };
+
+        public const string HelpDayHeader = "ДЕНЬ — МОНТАЖ";
+
+        /// <summary>Day-phase controls, as <see cref="DayBuildController"/> actually reads them.</summary>
+        public static readonly string[] HelpDayLines =
+        {
+            "ЛКМ по товару в магазине — выбрать, затем ЛКМ по пустой клетке — поставить ноду.",
+            "ПКМ — отменить выбор товара.",
+            "Протянуть от ноды к ноде (зажать ЛКМ на одной, отпустить на другой) — связь.",
+            "ПКМ по связи — снять её и вернуть часть кредитов.",
+            "ЛКМ по ноде защиты — выбрать её; кнопка апгрейда в панели — улучшить до ур.2.",
+            "«Начать смену» — уйти в ночь.",
+            "Esc — главное меню.",
+        };
+
+        public const string HelpNightHeader = "НОЧЬ — ТЕРМИНАЛ";
+
+        /// <summary>Night-phase controls and the command set from <see cref="TerminalCommandProcessor"/>.</summary>
+        public static readonly string[] HelpNightLines =
+        {
+            "help — список команд.",
+            "isolate <нода> — обрубить все связи ноды на время.",
+            "scan — раскрыть скрытые пакеты.",
+            "patch <нода> — вернуть ноду в сеть и снять изоляцию.",
+            "shutdown --all — вырубить сеть и закончить смену; доступна только когда сеть уже вне контроля.",
+            "Enter — выполнить, ↑/↓ — история команд.",
+            "Esc — снять фокус с поля ввода. Ночью Esc не открывает меню: поле ввода забирает его себе.",
+            "Имена нод подписаны на карте.",
+        };
+
+        /// <summary>The two controls that work in both phases.</summary>
+        public const string HelpFooterLine = "F4 — ускорение ×1/×4 · колесо мыши над логом — прокрутка";
 
         /// <summary>Russian description of a terminal command, keyed by its command word.</summary>
         public static string GetCommandDescription(string commandName)

@@ -30,10 +30,17 @@ namespace NightShift.Game
         public float TopExtraCells = 1.2f;
 
         /// <summary>
-        /// Extra empty space to the left of the grid, in cells, so the left-hand panels never cover
+        /// Minimum empty space to the left of the grid, in cells, so the left-hand panels never cover
         /// the first column. The day shop and the night terminal both sit there, and the Gateway is
         /// at column 0 — without this gutter it is hidden and cannot be clicked.
         /// </summary>
+        /// <remarks>
+        /// <b>A floor, not the whole answer.</b> Panels are sized in UI reference pixels and the map in
+        /// world units, and how those two compare changes with the window's aspect ratio — so a gutter
+        /// fixed in cells is only ever right at one aspect. <see cref="MapCamera.Frame"/> derives the
+        /// gutter it actually uses from <see cref="DayPanelWidthPx"/> and the live aspect, and treats
+        /// this value as the lower bound so the framing at the reference resolution cannot regress.
+        /// </remarks>
         public float LeftExtraCells = 3.4f;
 
         // --- Colours ---
@@ -290,6 +297,61 @@ namespace NightShift.Game
 
         /// <summary>Colour of a story line printed into the night log by <see cref="StoryLogDirector"/>.</summary>
         public Color StoryLogColor = new Color(0.66f, 0.86f, 1f, 1f);
+
+        // --- Window-size adaptation (player-requested polish pass) ---
+        // UiRoot puts the panel in PanelScaleMode.ScaleWithScreenSize against UiReferenceResolution
+        // with match 0.5, so at 16:9 every size in DisplaySettings.WindowSizes is the same layout at a
+        // different magnification and nothing below is needed. What these knobs exist for is the other
+        // aspects — a fullscreen window inherits the desktop's shape, and at match 0.5 a window wider
+        // than 16:9 gives the panel MORE reference pixels across and FEWER down, a narrower one the
+        // reverse. The percentages below are what stops a fixed-pixel panel from crowding the map in
+        // the narrow case.
+
+        /// <summary>
+        /// Cap on the width of the two left-hand panels (day shop, night terminal), as a percentage of
+        /// the screen, applied on top of their pixel widths.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="MapCamera.Frame"/> reserves its left gutter with the same cap, so the two can
+        /// never disagree about how much of the screen the panels occupy.
+        /// </remarks>
+        public float LeftPanelMaxWidthPercent = 33f;
+
+        /// <summary>Cap on the terminal panel's height, as a percentage of the screen.</summary>
+        public float TerminalMaxHeightPercent = 42f;
+
+        /// <summary>Clear space kept between a left-hand panel's right edge and the nearest node, in reference pixels.</summary>
+        public float LeftGutterGapPx = 16f;
+
+        /// <summary>
+        /// Hard ceiling on the left gutter, as a fraction of the visible width, so a pathological aspect
+        /// ratio cannot squeeze the map to nothing.
+        /// </summary>
+        public float MaxLeftGutterFraction = 0.45f;
+
+        /// <summary>Cap on the letter and ending panels' width, as a percentage of the screen.</summary>
+        public float StoryPanelMaxWidthPercent = 94f;
+
+        // --- Main menu, settings and help screens ---
+
+        /// <summary>Width of the main menu's entry buttons, in reference-resolution pixels.</summary>
+        public float MenuButtonWidthPx = 320f;
+
+        /// <summary>Cap on the menu's prologue, buttons and hint width, as a percentage of the screen.</summary>
+        public float MenuTextMaxWidthPercent = 72f;
+
+        /// <summary>Width of the settings content box, as a percentage of the screen.</summary>
+        public float SettingsPanelWidthPercent = 58f;
+
+        /// <summary>Width of the help content box, as a percentage of the screen. Two columns live in it.</summary>
+        public float HelpPanelWidthPercent = 88f;
+
+        /// <summary>
+        /// Font size of the help screen's control lines. Smaller than
+        /// <see cref="StoryBodyFontSize"/> on purpose: the help is the tallest screen in the game and
+        /// has to fit the reference height with the title and the button counted.
+        /// </summary>
+        public float HelpBodyFontSize = 15f;
 
         // --- Debug (Story 002 acceptance criterion 6) ---
 
