@@ -64,16 +64,20 @@ namespace NightShift.Game
             float cell = _layout.CellSize;
             float margin = _config.MarginCells * cell;
             float topExtra = _config.TopExtraCells * cell;
+            float leftExtra = _config.LeftExtraCells * cell;
 
             float requiredHeight = _layout.ContentHeight + 2f * margin + topExtra;
-            float requiredWidth = _layout.ContentWidth + 2f * margin;
+            float requiredWidth = _layout.ContentWidth + 2f * margin + leftExtra;
 
             float aspect = _camera.aspect;
             float sizeFromHeight = requiredHeight * 0.5f;
             float sizeFromWidth = aspect > 0.0001f ? requiredWidth / (2f * aspect) : sizeFromHeight;
 
             _camera.orthographicSize = Mathf.Max(sizeFromHeight, sizeFromWidth);
-            transform.position = new Vector3(0f, topExtra * 0.5f, CameraDistance);
+
+            // Shifting the camera left pushes the grid right on screen, opening the gutter the
+            // left-hand panels occupy; the same trick as topExtra, mirrored onto x.
+            transform.position = new Vector3(-leftExtra * 0.5f, topExtra * 0.5f, CameraDistance);
 
             _lastAspect = aspect;
         }

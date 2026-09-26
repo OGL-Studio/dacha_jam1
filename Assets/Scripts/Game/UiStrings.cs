@@ -90,9 +90,6 @@ namespace NightShift.Game
         /// <summary>Confirmation of a removed link and its refund, e.g. "Связь снята, возврат 7".</summary>
         public const string LinkRemovedFormat = "Связь снята, возврат {0}";
 
-        /// <summary>Shown when the link-removal shim could not bind to the simulation.</summary>
-        public const string LinkRemovalUnavailable = "Снятие связей недоступно в этой сборке.";
-
         /// <summary>Placement confirmation, e.g. "Поставлено: IDS (-60)".</summary>
         public const string PlacedFormat = "Поставлено: {0} (-{1})";
 

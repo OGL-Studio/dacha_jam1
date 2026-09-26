@@ -170,6 +170,37 @@ namespace NightShift.Core
             return true;
         }
 
+        /// <summary>
+        /// Removes the link between two nodes, in either order. The counterpart to
+        /// <see cref="TryAddLink"/>; charging or refunding credits is
+        /// <see cref="NetworkSimulation.TryRemoveLink"/>'s job, not this method's.
+        /// </summary>
+        /// <param name="removed">The link as it was stored, carrying its real <see cref="Link.Length"/>.</param>
+        /// <param name="error">Why removal was refused; empty on success.</param>
+        /// <returns>True when the link existed and was removed.</returns>
+        /// <remarks>
+        /// Nodes are never removed from the graph, so the adjacency lists themselves always survive;
+        /// only the two endpoint entries are dropped. A packet currently crossing this link keeps
+        /// the endpoints it was already travelling between — it recomputes its route at the next
+        /// node, where the link is simply no longer a neighbour.
+        /// </remarks>
+        public bool TryRemoveLink(int nodeAId, int nodeBId, out Link removed, out string error)
+        {
+            error = string.Empty;
+
+            if (!_linksByKey.TryGetValue(new Link(nodeAId, nodeBId, 0), out removed))
+            {
+                error = $"No link between node {nodeAId} and node {nodeBId}.";
+                return false;
+            }
+
+            _linksByKey.Remove(removed);
+            _links.Remove(removed);
+            RemoveAdjacency(removed.NodeAId, removed.NodeBId);
+            RemoveAdjacency(removed.NodeBId, removed.NodeAId);
+            return true;
+        }
+
         /// <summary>Looks up the existing link between two nodes (either order). Ignores isolation — an isolated link still exists and keeps its length.</summary>
         public bool TryGetLink(int nodeAId, int nodeBId, out Link link) =>
             _linksByKey.TryGetValue(new Link(nodeAId, nodeBId, 0), out link);
@@ -325,6 +356,14 @@ namespace NightShift.Core
             List<int> list = _adjacency[fromId];
             list.Add(toId);
             list.Sort();
+        }
+
+        private void RemoveAdjacency(int fromId, int toId)
+        {
+            if (_adjacency.TryGetValue(fromId, out List<int> list))
+            {
+                list.Remove(toId);
+            }
         }
     }
 }

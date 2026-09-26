@@ -175,6 +175,38 @@ namespace NightShift.Core
             return true;
         }
 
+        /// <summary>
+        /// Removes an existing link and refunds <see cref="GameData.LinkRefundFraction"/> of what it
+        /// cost to build. The counterpart to <see cref="TryAddLink"/>.
+        /// </summary>
+        /// <param name="refund">Credits actually returned; 0 when the call fails.</param>
+        /// <param name="error">Why removal was refused; empty on success.</param>
+        /// <remarks>
+        /// The refund is derived from the link's stored <see cref="Link.Length"/> through
+        /// <see cref="GameData.GetLinkCost"/>, so it tracks the real purchase price rather than a
+        /// figure the caller supplies. Rounded down, so removing a link can never return more than
+        /// it cost. Like the other build actions this is atomic: the graph is only mutated once the
+        /// link is known to exist.
+        /// </remarks>
+        public bool TryRemoveLink(int nodeAId, int nodeBId, out int refund, out string error)
+        {
+            refund = 0;
+
+            if (!Graph.TryRemoveLink(nodeAId, nodeBId, out Link removed, out error))
+            {
+                return false;
+            }
+
+            refund = (int)(Data.GetLinkCost(removed.Length) * Data.LinkRefundFraction);
+            if (refund > 0)
+            {
+                Credits += refund;
+                OnCreditsChanged?.Invoke(Credits);
+            }
+
+            return true;
+        }
+
         /// <summary>Upgrades a security tool to level 2, atomically debiting its <see cref="GameData"/> upgrade cost. See <see cref="TryPlaceNode"/> for the atomicity guarantee.</summary>
         public bool TryUpgrade(int nodeId, out string error)
         {

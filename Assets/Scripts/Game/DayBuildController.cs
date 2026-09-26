@@ -333,15 +333,7 @@ namespace NightShift.Game
 
         private void RemoveLink(Link link)
         {
-            if (!LinkRemovalShim.IsAvailable)
-            {
-                OnStatus?.Invoke(UiStrings.LinkRemovalUnavailable);
-                return;
-            }
-
-            int refund = Mathf.FloorToInt(_simulation.Data.GetLinkCost(link.Length) * _config.LinkRefundFraction);
-
-            if (!LinkRemovalShim.TryRemoveLink(_simulation, link, refund, out string error))
+            if (!_simulation.TryRemoveLink(link.NodeAId, link.NodeBId, out int refund, out string error))
             {
                 OnStatus?.Invoke(string.Format(UiStrings.RejectedFormat, error));
                 return;

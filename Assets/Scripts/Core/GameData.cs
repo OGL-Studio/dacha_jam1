@@ -40,6 +40,12 @@ namespace NightShift.Core
         /// <summary>Longest allowed link, in cells of Manhattan distance between its two endpoint nodes.</summary>
         public int MaxLinkLength = 6;
 
+        /// <summary>
+        /// Share of a link's purchase price returned when the player removes it, rounded down.
+        /// Below 1.0 so that building and re-routing costs something rather than being free.
+        /// </summary>
+        public float LinkRefundFraction = 0.5f;
+
         // --- Upgrade costs, level 1 -> 2 (credits) ---
         public int FirewallUpgradeCost = 80;
         public int IdsUpgradeCost = 100;

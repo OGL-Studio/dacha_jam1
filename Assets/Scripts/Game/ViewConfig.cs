@@ -29,6 +29,13 @@ namespace NightShift.Game
         /// <summary>Extra empty space above the grid, in cells, so the HUD bar never covers the top row.</summary>
         public float TopExtraCells = 1.2f;
 
+        /// <summary>
+        /// Extra empty space to the left of the grid, in cells, so the left-hand panels never cover
+        /// the first column. The day shop and the night terminal both sit there, and the Gateway is
+        /// at column 0 — without this gutter it is hidden and cannot be clicked.
+        /// </summary>
+        public float LeftExtraCells = 3.4f;
+
         // --- Colours ---
 
         public Color BackgroundColor = new Color(0.02f, 0.03f, 0.02f, 1f);
@@ -164,19 +171,6 @@ namespace NightShift.Game
 
         /// <summary>How close, in world units, a right-click must land to a link's centre line to remove it.</summary>
         public float LinkPickRadius = 0.22f;
-
-        /// <summary>
-        /// Share of a link's purchase price returned when the player removes it (acceptance
-        /// criterion 3).
-        /// </summary>
-        /// <remarks>
-        /// <b>This is a balance number and does not belong here.</b> It should sit in
-        /// <see cref="GameData"/> next to <see cref="GameData.LinkCostPerCell"/>, but
-        /// <c>NightShift.Core</c> has no link-removal concept at all (see
-        /// <see cref="LinkRemovalShim"/>) and Story 003 does not own that assembly. Move it the
-        /// moment Core grows a real <c>RemoveLink</c> API.
-        /// </remarks>
-        public float LinkRefundFraction = 0.5f;
 
         // --- Night phase: terminal (Story 004) ---
 
