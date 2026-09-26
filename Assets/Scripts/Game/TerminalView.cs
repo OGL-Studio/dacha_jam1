@@ -39,13 +39,31 @@ namespace NightShift.Game
         private const int InputPaddingPx = 4;
         private const long FocusDelayMs = 60;
 
+        /// <summary>Slack, in panel pixels, within which the log still counts as "at the bottom".</summary>
+        private const float TailEpsilonPx = 0.5f;
+
+        /// <summary>Gap kept between the wrapped text and the scroll indicator, in panel pixels.</summary>
+        private const float ScrollBarGapPx = 3f;
+
         private TerminalCommandProcessor _processor;
         private GameRunner _runner;
         private ViewConfig _config;
 
         private VisualElement _panel;
-        private ScrollView _log;
+        private VisualElement _logViewport;
+        private VisualElement _logContent;
+        private VisualElement _scrollThumb;
         private TextField _input;
+
+        /// <summary>How far the log is scrolled down from its oldest line, in panel pixels.</summary>
+        private float _scrollOffset;
+
+        /// <summary>
+        /// True while the log is pinned to its newest line. Cleared when the player scrolls back, and
+        /// set again as soon as they scroll to the bottom - so reading history is never yanked away by
+        /// an incoming line, and following the live output needs no action.
+        /// </summary>
+        private bool _followTail = true;
 
         /// <summary>Submitted command lines, oldest first (acceptance criterion 8's history).</summary>
         private readonly List<string> _history = new List<string>();
@@ -117,6 +135,9 @@ namespace NightShift.Game
 
             _visible = true;
             _panel.style.display = DisplayStyle.Flex;
+
+            // A night always opens on its newest line, whatever the player was reading last night.
+            _followTail = true;
 
             AppendLine(UiStrings.TerminalReady, _config.TerminalOkColor);
             FocusInputSoon();
@@ -295,10 +316,17 @@ namespace NightShift.Game
             AppendLine(text, corrupted ? _config.StoryCorruptColor : _config.StoryLogColor);
         }
 
-        /// <summary>Appends one line to the scrolling history, trims the oldest, and scrolls to the bottom.</summary>
+        /// <summary>Appends one line to the log and trims the oldest beyond <see cref="ViewConfig.TerminalMaxLogLines"/>.</summary>
+        /// <remarks>
+        /// Nothing scrolls here. Appending changes the content's height, which raises
+        /// <see cref="GeometryChangedEvent"/> once layout has measured the new line, and
+        /// <see cref="HandleLogGeometryChanged"/> is what pins the view to the newest line. Scrolling
+        /// in this method instead would clamp against the height the log had *before* the new line was
+        /// measured, and land one line short every time.
+        /// </remarks>
         private void AppendLine(string text, Color color)
         {
-            if (_log == null)
+            if (_logContent == null)
             {
                 return;
             }
@@ -308,31 +336,111 @@ namespace NightShift.Game
             label.style.fontSize = _config.TerminalFontSize;
             label.style.whiteSpace = WhiteSpace.Normal;
             label.style.flexShrink = 0f;
-            _log.contentContainer.Add(label);
+            _logContent.Add(label);
 
             int max = Mathf.Max(8, _config.TerminalMaxLogLines);
-            while (_log.contentContainer.childCount > max)
+            while (_logContent.childCount > max)
             {
-                _log.contentContainer.RemoveAt(0);
+                _logContent.RemoveAt(0);
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Scrolling
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Distance the content can travel inside the viewport, in panel pixels. Zero while the whole
+        /// log fits, which is also what hides the indicator.
+        /// </summary>
+        private float MaxScrollOffset
+        {
+            get
+            {
+                if (_logContent == null || _logViewport == null)
+                {
+                    return 0f;
+                }
+
+                float contentHeight = _logContent.layout.height;
+                float viewportHeight = _logViewport.layout.height;
+                if (float.IsNaN(contentHeight) || float.IsNaN(viewportHeight))
+                {
+                    return 0f;
+                }
+
+                return Mathf.Max(0f, contentHeight - viewportHeight);
+            }
+        }
+
+        /// <summary>One wheel notch, converted into <see cref="ViewConfig.TerminalScrollStepPx"/> of travel.</summary>
+        /// <remarks>
+        /// A positive <c>delta.y</c> is a scroll towards the newest line, the same direction UI
+        /// Toolkit's own scrolling controls use. <c>StopPropagation</c> keeps the notch from also
+        /// reaching anything the terminal sits over.
+        /// </remarks>
+        private void HandleLogWheel(WheelEvent evt)
+        {
+            if (MaxScrollOffset <= 0f)
+            {
+                return;
             }
 
-            ScrollToBottomSoon();
+            SetScrollOffset(_scrollOffset + evt.delta.y * _config.TerminalScrollStepPx);
+            evt.StopPropagation();
+        }
+
+        /// <summary>Clamps, stores and applies a new scroll position, and re-decides whether to follow the tail.</summary>
+        private void SetScrollOffset(float offset)
+        {
+            float max = MaxScrollOffset;
+            _scrollOffset = Mathf.Clamp(offset, 0f, max);
+            _followTail = _scrollOffset >= max - TailEpsilonPx;
+            ApplyScroll();
         }
 
         /// <summary>
-        /// Scrolls the log to its newest line one frame later, once layout has measured the line just
-        /// added - scrolling in the same frame would clamp against the old content height.
+        /// Re-pins the log after any layout change: a line appended or trimmed, a resized window, or a
+        /// wrapped line changing height.
         /// </summary>
-        private void ScrollToBottomSoon()
+        private void HandleLogGeometryChanged(GeometryChangedEvent evt)
         {
-            _log.schedule.Execute(() =>
+            float max = MaxScrollOffset;
+            _scrollOffset = _followTail ? max : Mathf.Clamp(_scrollOffset, 0f, max);
+            ApplyScroll();
+        }
+
+        /// <summary>Moves the content and sizes the indicator. The only place either is written.</summary>
+        private void ApplyScroll()
+        {
+            if (_logContent == null || _logViewport == null)
             {
-                Scroller scroller = _log.verticalScroller;
-                if (scroller != null)
-                {
-                    scroller.value = scroller.highValue;
-                }
-            });
+                return;
+            }
+
+            _logContent.style.top = -_scrollOffset;
+
+            float contentHeight = _logContent.layout.height;
+            float viewportHeight = _logViewport.layout.height;
+            float max = MaxScrollOffset;
+
+            bool scrollable = max > 0f &&
+                              !float.IsNaN(contentHeight) && contentHeight > 0f &&
+                              !float.IsNaN(viewportHeight) && viewportHeight > 0f;
+
+            _scrollThumb.style.display = scrollable ? DisplayStyle.Flex : DisplayStyle.None;
+            if (!scrollable)
+            {
+                return;
+            }
+
+            float thumbHeight = Mathf.Max(
+                _config.TerminalScrollBarWidthPx * 2f,
+                viewportHeight * viewportHeight / contentHeight);
+
+            float travel = Mathf.Max(0f, viewportHeight - thumbHeight);
+            _scrollThumb.style.height = thumbHeight;
+            _scrollThumb.style.top = travel * (_scrollOffset / max);
         }
 
         private void FocusInputSoon()
@@ -377,12 +485,7 @@ namespace NightShift.Game
             title.style.flexShrink = 0f;
             _panel.Add(title);
 
-            _log = new ScrollView(ScrollViewMode.Vertical) { name = "terminal-log" };
-            _log.style.flexGrow = 1f;
-            _log.style.flexShrink = 1f;
-            _log.style.marginTop = 4f;
-            _log.style.marginBottom = 4f;
-            _panel.Add(_log);
+            BuildLog();
 
             _input = new TextField { name = "terminal-input" };
             _input.multiline = false;
@@ -416,6 +519,75 @@ namespace NightShift.Game
 
             _panel.style.display = DisplayStyle.None;
             parent.Add(_panel);
+        }
+
+        /// <summary>
+        /// Builds the scrolling log: a clipped viewport, an absolutely positioned content column that
+        /// slides inside it, and a thin position indicator.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Why this is not a <c>ScrollView</c>.</b> It was one, and it could not work here.
+        /// <see cref="ScrollView"/> takes its viewport clipping, its content-container flex rules and
+        /// its scroller geometry from the default runtime theme's style sheet - and a
+        /// <see cref="PanelSettings"/> created in code has no theme (see <see cref="UiRoot"/>; the
+        /// player log records the engine's own <c>No Theme Style Sheet set to PanelSettings</c>
+        /// warning). Unstyled, the viewport never bounded the content, so the log grew instead of
+        /// scrolling. Worse, <c>ScrollView.OnScrollWheel</c> calls <c>ReadSingleLineHeight</c>, which
+        /// resolves a font metric through that same missing theme and threw a
+        /// <see cref="System.NullReferenceException"/> on every wheel notch - also in the player log.
+        /// Nothing this view could set on the <c>ScrollView</c> from outside would have stopped that
+        /// throw, so the control is not used.</para>
+        ///
+        /// <para><b>Absolute content, not a flex child.</b> The content column is
+        /// <see cref="Position.Absolute"/>, so its height is its own and it contributes nothing to the
+        /// viewport's: the viewport's height therefore comes purely from <c>flexGrow</c> inside the
+        /// panel's fixed height, which is exactly the bounded box a scroller needs. Scrolling is then
+        /// one assignment to <c>top</c>, and <c>overflow: hidden</c> on the viewport does the
+        /// clipping. Every value below is either a <see cref="ViewConfig"/> knob or spacing, in
+        /// keeping with the rest of this file.</para>
+        /// </remarks>
+        private void BuildLog()
+        {
+            _logViewport = new VisualElement { name = "terminal-log" };
+            _logViewport.style.flexGrow = 1f;
+            _logViewport.style.flexShrink = 1f;
+
+            // Without this a flex child will not shrink below its own content, which would push the
+            // input field out through the bottom of the panel as soon as the log grew past it.
+            _logViewport.style.minHeight = 0f;
+
+            _logViewport.style.overflow = Overflow.Hidden;
+            _logViewport.style.marginTop = 4f;
+            _logViewport.style.marginBottom = 4f;
+            _panel.Add(_logViewport);
+
+            _logContent = new VisualElement { name = "terminal-log-content" };
+            _logContent.style.position = Position.Absolute;
+            _logContent.style.left = 0f;
+            _logContent.style.right = _config.TerminalScrollBarWidthPx + ScrollBarGapPx;
+            _logContent.style.top = 0f;
+            _logContent.style.flexDirection = FlexDirection.Column;
+            _logViewport.Add(_logContent);
+
+            _scrollThumb = new VisualElement { name = "terminal-log-thumb" };
+            _scrollThumb.style.position = Position.Absolute;
+            _scrollThumb.style.right = 0f;
+            _scrollThumb.style.top = 0f;
+            _scrollThumb.style.width = _config.TerminalScrollBarWidthPx;
+            _scrollThumb.style.backgroundColor = _config.TerminalScrollBarColor;
+            _scrollThumb.style.display = DisplayStyle.None;
+
+            // The indicator reports the position; it must never become the thing under the cursor
+            // when the player aims a wheel notch at the log.
+            _scrollThumb.pickingMode = PickingMode.Ignore;
+            _logViewport.Add(_scrollThumb);
+
+            _logViewport.RegisterCallback<WheelEvent>(HandleLogWheel);
+
+            // Both, and not only the content: the content's height changes when a line is added, and
+            // the viewport's changes when the window is resized. Either invalidates the clamp.
+            _logContent.RegisterCallback<GeometryChangedEvent>(HandleLogGeometryChanged);
+            _logViewport.RegisterCallback<GeometryChangedEvent>(HandleLogGeometryChanged);
         }
 
         private void SetKeyboardOwned(bool owned)

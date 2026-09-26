@@ -1,12 +1,12 @@
 # Story 007: 3D-комната с монитором
 
 > **Epic**: Ночная смена (MVP)
-> **Status**: Ready
+> **Status**: In Progress
 > **Layer**: Presentation
 > **Type**: Visual/Feel
 > **Estimate**: 30 min (cut first)
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: —
+> **Last Updated**: 2026-09-26
 
 ## Context
 

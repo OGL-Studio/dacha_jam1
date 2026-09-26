@@ -218,37 +218,38 @@ namespace NightShift.Game
             uiRoot.Configure(config);
             uiGo.SetActive(true);
 
-            // The HUD ignores picking; the day and report layers do not, because both own real
-            // buttons. A pickable full-screen layer is safe here: map interaction is read from the
-            // legacy Input class, which UI Toolkit's hit-testing does not feed, so nothing on the map
-            // is "swallowed" by the layer. What keeps a click on the day panel from also placing a
-            // node behind it is DayShopView reporting pointer-over to DayBuildController. The report
-            // layer is created last, so it is picked above the day layer while both are up.
+            // The pointer floor: one full-screen *pickable* element, underneath every other layer and
+            // owning nothing. It exists because a runtime UI Toolkit panel dispatches a pointer event
+            // only when its hit-test finds something; over the bare map - where every layer below
+            // ignores picking and every panel is display: none - the hit-test finds nothing, no event
+            // is dispatched, and the panel's "element under the pointer" is never updated. The
+            // PointerLeaveEvent that DayShopView needs to clear DayBuildController.PointerOverUi
+            // therefore never arrives, the flag sticks true after the player's first visit to the shop
+            // panel, and MapInputBlocked silently discards every map click from then on. That is
+            // Story 003's build phase dead in a built player. The floor guarantees the hit-test always
+            // succeeds, so enter and leave are always paired; DayShopView also clears the flag on the
+            // floor's own PointerEnterEvent, which makes the invariant self-healing rather than
+            // event-order dependent. It must be created first, so every real layer sits above it.
+            VisualElement pointerFloorLayer = uiRoot.CreateLayer("pointer-floor-layer", false);
+
+            // Every layer below ignores picking, and none of them may stop doing so. A layer is a
+            // full-screen container, so a *pickable* one is picked in preference to everything in
+            // every layer beneath it, for the whole screen, for the whole game - the day panel's
+            // buttons included. A PickingMode.Ignore element is excluded from hit-testing itself but
+            // its children are not, so the panel inside each layer still takes its own clicks, and
+            // each panel is display: none while its screen is down, which takes it out of hit-testing
+            // entirely. Layer order still decides what draws and picks above what: the report covers
+            // the day panel, the terminal covers the report, and Story 006's letters and title screen
+            // cover everything - the letters must cover the shop they interrupt.
             VisualElement hudLayer = uiRoot.CreateLayer("hud-layer", true);
-            VisualElement dayLayer = uiRoot.CreateLayer("day-layer", false);
-            VisualElement reportLayer = uiRoot.CreateLayer("report-layer", false);
-
-            // Story 004's terminal layer is created last so its panel draws over the map, but it
-            // ignores picking at the layer level: only the terminal panel itself is pickable, so a
-            // full-screen layer above the report layer cannot swallow the report's own buttons.
-            // A PickingMode.Ignore element is excluded from hit-testing itself, not its children.
+            VisualElement dayLayer = uiRoot.CreateLayer("day-layer", true);
+            VisualElement reportLayer = uiRoot.CreateLayer("report-layer", true);
             VisualElement terminalLayer = uiRoot.CreateLayer("terminal-layer", true);
-
-            // Story 006's two full-screen overlays are created last, so they draw over the map, the
-            // HUD, the shop, the terminal and the report - the letters must cover the shop they
-            // interrupt, and the title screen must cover everything.
-            //
-            // Both pass ignorePicking: true for the same reason the terminal layer does, and it is
-            // load-bearing rather than tidy. A PickingMode.Ignore element is excluded from hit-testing
-            // itself but its children are not, so the *panel* inside each layer still takes clicks -
-            // and each panel is display: none while its screen is down, which takes it out of
-            // hit-testing entirely. Had these layers been pickable, they would have sat over the whole
-            // screen forever and eaten every click meant for the report's «Заново» and for the shop.
             VisualElement letterLayer = uiRoot.CreateLayer("letter-layer", true);
             VisualElement titleLayer = uiRoot.CreateLayer("title-layer", true);
 
             uiGo.AddComponent<NightHudView>().Initialize(simulation, runner, config, hudLayer);
-            uiGo.AddComponent<DayShopView>().Initialize(simulation, runner, buildController, config, dayLayer);
+            uiGo.AddComponent<DayShopView>().Initialize(simulation, runner, buildController, config, dayLayer, pointerFloorLayer);
 
             // The report's outgoing actions are "open the next day" and "restart the campaign" - the
             // runner's job and this class's job respectively. Neither is the view's.

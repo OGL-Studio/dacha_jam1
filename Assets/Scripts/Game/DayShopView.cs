@@ -78,12 +78,19 @@ namespace NightShift.Game
         /// <param name="controller">Receives the panel's commands and reports selection and status back.</param>
         /// <param name="config">Presentation constants.</param>
         /// <param name="parent">UI Toolkit layer from <see cref="UiRoot.CreateLayer"/>.</param>
+        /// <param name="pointerFloor">
+        /// The bottom-most, full-screen pickable layer from <see cref="GameBootstrap"/>. Entering it
+        /// means the pointer is over no panel at all, which is the second half of keeping
+        /// <see cref="DayBuildController.PointerOverUi"/> honest - see <see cref="BuildPanel"/>. May be
+        /// null in a harness that has no floor.
+        /// </param>
         public void Initialize(
             NetworkSimulation simulation,
             GameRunner runner,
             DayBuildController controller,
             ViewConfig config,
-            VisualElement parent)
+            VisualElement parent,
+            VisualElement pointerFloor)
         {
             _simulation = simulation;
             _runner = runner;
@@ -97,6 +104,7 @@ namespace NightShift.Game
             }
 
             BuildPanel(parent);
+            BindPointerFloor(pointerFloor);
 
             _simulation.OnCreditsChanged += HandleCreditsChanged;
             _simulation.OnCoreDamaged += HandleCoreDamaged;
@@ -288,6 +296,12 @@ namespace NightShift.Game
             _panel.style.display = DisplayStyle.None;
 
             // The map is picked with raw Input, so the panel has to say when it owns the pointer.
+            // These two are correct but not sufficient on their own: a runtime panel only dispatches a
+            // pointer event when its hit-test finds something, so a pointer that moves from this panel
+            // out onto bare map used to generate no event at all, no PointerLeaveEvent, and a
+            // PointerOverUi that stayed true for the rest of the session. GameBootstrap's pointer floor
+            // is what guarantees the hit-test always finds something; BindPointerFloor is the belt to
+            // its braces.
             _panel.RegisterCallback<PointerEnterEvent>(_ => _controller.PointerOverUi = true);
             _panel.RegisterCallback<PointerLeaveEvent>(_ => _controller.PointerOverUi = false);
 
@@ -327,6 +341,32 @@ namespace NightShift.Game
             _startShiftButton.style.marginTop = SectionSpacingPx;
             _startShiftButton.clicked += () => _runner.StartNight();
             StyleActionButton(_startShiftButton, true, true, _config.HudTextColor);
+        }
+
+        /// <summary>
+        /// Makes "the pointer is over nothing" clear <see cref="DayBuildController.PointerOverUi"/>
+        /// directly, instead of trusting that a matching leave event was delivered.
+        /// </summary>
+        /// <remarks>
+        /// <para>The flag is a latch, and a latch that is only ever cleared by one event is one missed
+        /// event away from locking the player out of the whole build phase - which is exactly what
+        /// happened. The floor is entered whenever the pointer is over no panel, so this turns the
+        /// latch into a state that re-derives itself: any pointer movement over the bare map puts it
+        /// back to false, whatever went wrong beforehand.</para>
+        ///
+        /// <para><c>PointerDownEvent</c> as well as the enter, because the enter can only fire on a
+        /// movement - a click delivered without one (an alt-tab back onto the map, a warped cursor)
+        /// would otherwise not clear it.</para>
+        /// </remarks>
+        private void BindPointerFloor(VisualElement pointerFloor)
+        {
+            if (pointerFloor == null)
+            {
+                return;
+            }
+
+            pointerFloor.RegisterCallback<PointerEnterEvent>(_ => _controller.PointerOverUi = false);
+            pointerFloor.RegisterCallback<PointerDownEvent>(_ => _controller.PointerOverUi = false);
         }
 
         private Label AddLabel(VisualElement parent, string labelName, float fontSize, Color color)

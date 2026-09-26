@@ -211,6 +211,15 @@ namespace NightShift.Game
         public float TerminalTitleFontSize = 17f;
         public float TerminalHintFontSize = 12f;
 
+        /// <summary>Distance the terminal log scrolls per mouse-wheel notch, in reference-resolution pixels.</summary>
+        public float TerminalScrollStepPx = 40f;
+
+        /// <summary>Width of the terminal log's scroll indicator, in reference-resolution pixels.</summary>
+        public float TerminalScrollBarWidthPx = 4f;
+
+        /// <summary>Fill of that indicator. Only drawn while the log is taller than its viewport.</summary>
+        public Color TerminalScrollBarColor = new Color(0.26f, 0.68f, 0.32f, 0.85f);
+
         /// <summary>
         /// Oldest lines are dropped once the log exceeds this many, so a long night cannot grow the
         /// panel's element count without bound.
